@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     openai_base_url: str | None = None
     openai_model: str = "gpt-4o-mini"
     openai_max_tokens: int = 2048
+    openai_embeddings_model: str = "text-embedding-3-small"
+
+    database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/agentic"
+    rag_chunk_size: int = 900
+    rag_chunk_overlap: int = 150
+    rag_top_k: int = 6
 
     request_timeout_s: float = 60.0
     max_concurrency: int = 32

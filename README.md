@@ -32,5 +32,7 @@ Open `http://127.0.0.1:8000/docs`.
 
 ```bash
 cp .env.example .env
-docker compose up --build
+docker compose -f docker-compose.prod.yml up --build
 ```
+
+Frontend will be on `http://localhost:3000` and API on `http://localhost:8000`.
