@@ -6,11 +6,27 @@ import App from "./App";
 const theme = createTheme({
   palette: {
     mode: "dark",
-    primary: { main: "#6ea8fe" },
-    background: { default: "#0b0f17", paper: "#0e1420" },
+    primary: { main: "#667eea" },
+    background: { default: "#0a0812", paper: "rgba(255,255,255,0.04)" },
+    text: { primary: "#f7f7f7", secondary: "#9ca3af", disabled: "rgba(255,255,255,0.25)" },
+    divider: "rgba(255,255,255,0.08)",
   },
   shape: { borderRadius: 12 },
-  typography: { fontFamily: ["Inter", "system-ui", "Segoe UI", "Roboto", "Arial"].join(",") },
+  typography: {
+    fontFamily: ["Inter", "system-ui", "Segoe UI", "Roboto", "Arial"].join(","),
+  },
+  components: {
+    MuiButton: {
+      styleOverrides: {
+        root: { borderRadius: 8, textTransform: "none", fontWeight: 500 },
+      },
+    },
+    MuiPaper: {
+      styleOverrides: {
+        root: { backgroundImage: "none" },
+      },
+    },
+  },
 });
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
