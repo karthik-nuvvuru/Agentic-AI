@@ -1,5 +1,5 @@
 import { Box, useTheme } from "@mui/material";
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 interface ScrollContainerProps {
   children: React.ReactNode;
@@ -18,25 +18,27 @@ export function ScrollContainer({ children }: ScrollContainerProps) {
     }
   }, []);
 
+  useEffect(() => {
+    scrollToBottom();
+  }, [scrollToBottom, children]);
+
   return (
     <Box
       ref={scrollRef}
       sx={{
         overflowY: "auto",
-        height: "calc(100vh - 260px)",
-        px: 1,
+        height: "calc(100vh - 120px)",
         scrollBehavior: "smooth",
-        "&::-webkit-scrollbar": { width: "6px" },
+        "&::-webkit-scrollbar": { width: "4px" },
         "&::-webkit-scrollbar-track": { bgcolor: "transparent" },
         "&::-webkit-scrollbar-thumb": {
-          bgcolor: theme.palette.divider,
-          borderRadius: "3px",
+          bgcolor: "rgba(255,255,255,.05)",
+          borderRadius: "2px",
         },
         "&::-webkit-scrollbar-thumb:hover": { bgcolor: theme.palette.text.secondary },
       }}
     >
       {children}
-      <Box sx={{ height: "1px", width: "1px", visibility: "hidden" }} ref={scrollToBottom} />
     </Box>
   );
 }

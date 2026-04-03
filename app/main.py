@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from app.api.health import router as health_router
 from app.api.v1.agent import router as agent_router
+from app.api.v1.auth import router as auth_router
 from app.api.v1.conversations import router as conversations_router
 from app.api.v1.rag import router as rag_router
 from app.core.config import get_settings
@@ -17,7 +18,10 @@ from app.core.logging import configure_logging
 from app.db.init import init_db
 from app.db.session import get_engine
 from app.exceptions import global_exception_handler, validation_exception_handler
-from app.middleware import RequestTimingMiddleware
+from app.api.v1.feedback import router as feedback_router
+from app.cache.ratelimit import is_rate_limited, rate_limit_remaining
+from app.middleware import RateLimitMiddleware, RequestTimingMiddleware
+from app.middleware import AuthMiddleware, RateLimitMiddleware, RequestTimingMiddleware
 
 
 log = structlog.get_logger(__name__)
@@ -77,11 +81,17 @@ def create_app() -> FastAPI:
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.add_exception_handler(ValidationError, validation_exception_handler)
 
+    # Middleware (order matters: rate limit first, then auth)
+    app.add_middleware(RateLimitMiddleware)
+    app.add_middleware(AuthMiddleware)
+
     # Routes
     app.include_router(health_router)
     app.include_router(agent_router)
+    app.include_router(auth_router)
     app.include_router(rag_router)
     app.include_router(conversations_router)
+    app.include_router(feedback_router)
 
     return app
 

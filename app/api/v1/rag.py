@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import uuid
 from typing import Any
@@ -10,6 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import desc, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.cache.rag import get_cached_response, set_cached_response
 from app.core.config import get_settings
 from app.db.models import Chunk, Conversation, Document, Message
 from app.db.session import db_session
@@ -177,6 +177,13 @@ async def rag_chat(
     if not settings.openai_api_key:
         raise HTTPException(status_code=503, detail="OPENAI_API_KEY is required for chat")
 
+    # Try cache first (only for single messages without conversation history)
+    if not req.conversation_id:
+        cached = await get_cached_response(req.message, req.top_k)
+        if cached:
+            cached["conversation_id"] = req.conversation_id or str(uuid.uuid4())
+            return ChatResponse(**cached)
+
     conversation_id = req.conversation_id or str(uuid.uuid4())
 
     # Create conversation if needed
@@ -269,12 +276,20 @@ async def rag_chat(
         for c in chunks
     ]
 
-    return ChatResponse(
+    response = ChatResponse(
         conversation_id=conversation_id,
         message_id=str(assistant_msg.id),
         answer=answer,
         sources=sources,
     )
+
+    # Write to cache (only first-message queries to avoid conversation-history collisions)
+    try:
+        await set_cached_response(req.message, req.top_k, {"message_id": str(assistant_msg.id), "answer": answer, "sources": sources})
+    except Exception:
+        pass
+
+    return response
 
 
 @router.post("/chat/stream")

@@ -5,13 +5,28 @@ import uuid
 
 import sqlalchemy as sa
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
     pass
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    auth_provider: Mapped[str] = mapped_column(String(50), nullable=False, default="email")
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=dt.datetime.utcnow)
+
+    conversations: Mapped[list["Conversation"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
 
 
 class Document(Base):
@@ -41,6 +56,7 @@ class Conversation(Base):
     __tablename__ = "conversations"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False, default="New conversation")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=dt.datetime.utcnow)
     updated_at: Mapped[dt.datetime] = mapped_column(
@@ -49,6 +65,7 @@ class Conversation(Base):
         onupdate=dt.datetime.utcnow,
     )
 
+    owner: Mapped[User | None] = relationship(back_populates="conversations")
     messages: Mapped[list["Message"]] = relationship(back_populates="conversation", cascade="all, delete-orphan")
 
 
@@ -60,5 +77,6 @@ class Message(Base):
     role: Mapped[str] = mapped_column(String(20), nullable=False)  # "user" / "assistant"
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=dt.datetime.utcnow)
+    feedback_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
