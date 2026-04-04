@@ -8,6 +8,7 @@ from __future__ import annotations
 import uuid
 
 import httpx
+import structlog
 from authlib.integrations.httpx_client import AsyncOAuth2Client
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, EmailStr, Field
@@ -171,10 +172,19 @@ async def google_login(request: Request):
 
 
 @router.get("/google/callback")
-async def google_callback(request: Request, session: AsyncSession = Depends(db_session)):
+async def google_callback(
+    request: Request,
+    state: str | None = None,
+    session: AsyncSession = Depends(db_session),
+):
     code = request.query_params.get("code")
     if not code:
         raise HTTPException(status_code=400, detail="No code provided")
+
+    # CSRF protection: verify OAuth state matches
+    provider = _verify_state(state or "")
+    if provider != "google":
+        raise HTTPException(status_code=400, detail="Invalid or expired OAuth state")
 
     client = _oauth_client_google()
     token = await client.fetch_token(
@@ -182,13 +192,19 @@ async def google_callback(request: Request, session: AsyncSession = Depends(db_s
         code=code,
         redirect_uri=str(request.url_for("google_callback")),
     )
-    id_token = token.get("id_token")
-    if not id_token:
-        raise HTTPException(status_code=400, detail="No id_token received")
+    access_token = token.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=400, detail="No access_token received")
 
-    # Decode ID token to get user info
-    from jose import jwt as jose_jwt
-    info = jose_jwt.decode(id_token, options={"verify_signature": False, "verify_aud": False})
+    # Use Google userinfo endpoint instead of unsigned ID-token decode
+    async with httpx.AsyncClient() as http:
+        user_info = await http.get(
+            "https://openidconnect.googleapis.com/v1/userinfo",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        if user_info.status_code != 200:
+            raise HTTPException(status_code=400, detail="Failed to fetch Google user info")
+        info = user_info.json()
 
     email = info.get("email", "")
     name = info.get("name", "")

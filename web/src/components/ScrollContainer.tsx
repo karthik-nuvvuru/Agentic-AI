@@ -1,44 +1,41 @@
-import { Box, useTheme } from "@mui/material";
 import { useCallback, useEffect, useRef } from "react";
+import { Box, useTheme } from "@mui/material";
+import { styled } from "@mui/material/styles";
 
-interface ScrollContainerProps {
-  children: React.ReactNode;
-}
+const ScrollBox = styled(Box)(({ theme }) => ({
+  overflowY: "auto",
+  height: "100%",
+  scrollBehavior: "smooth",
+  "&::-webkit-scrollbar": { width: "4px" },
+  "&::-webkit-scrollbar-track": { background: "transparent" },
+  "&::-webkit-scrollbar-thumb": {
+    background: "rgba(128,128,128,.15)",
+    borderRadius: "2px",
+  },
+  "&::-webkit-scrollbar-thumb:hover": { background: theme.palette.text.secondary },
+}));
 
-export function ScrollContainer({ children }: ScrollContainerProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const theme = useTheme();
+export function ScrollContainer({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior: "smooth",
-      });
+    if (ref.current) {
+      const { scrollHeight, clientHeight, scrollTop } = ref.current;
+      // Only auto-scroll if user is near bottom (avoids jumping when user scrolls up)
+      if (scrollHeight - scrollTop - clientHeight < 200) {
+        ref.current.scrollTo({ top: scrollHeight, behavior: "smooth" });
+      }
     }
   }, []);
 
+  // Use MutationObserver so we don't re-trigger on every small token update
   useEffect(() => {
-    scrollToBottom();
-  }, [scrollToBottom, children]);
+    const el = ref.current;
+    if (!el) return;
+    const observer = new MutationObserver(scrollToBottom);
+    observer.observe(el, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [scrollToBottom]);
 
-  return (
-    <Box
-      ref={scrollRef}
-      sx={{
-        overflowY: "auto",
-        height: "calc(100vh - 120px)",
-        scrollBehavior: "smooth",
-        "&::-webkit-scrollbar": { width: "4px" },
-        "&::-webkit-scrollbar-track": { bgcolor: "transparent" },
-        "&::-webkit-scrollbar-thumb": {
-          bgcolor: "rgba(255,255,255,.05)",
-          borderRadius: "2px",
-        },
-        "&::-webkit-scrollbar-thumb:hover": { bgcolor: theme.palette.text.secondary },
-      }}
-    >
-      {children}
-    </Box>
-  );
+  return <ScrollBox ref={ref}>{children}</ScrollBox>;
 }

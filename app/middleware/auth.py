@@ -55,12 +55,18 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Extract token
         auth = request.headers.get("Authorization", "")
         if not auth.startswith("Bearer "):
-            return JSONResponse(status_code=401, content={"detail": "Missing or invalid Authorization header"})
+            return JSONResponse(
+                status_code=401,
+                content={"error": "Missing or invalid Authorization header", "code": "UNAUTHORIZED"},
+            )
 
         token = auth[7:]
         payload = decode_access_token(token)
         if not payload:
-            return JSONResponse(status_code=401, content={"detail": "Token expired or invalid"})
+            return JSONResponse(
+                status_code=401,
+                content={"error": "Token expired or invalid", "code": "UNAUTHORIZED"},
+            )
 
         request.state.user = {
             "id": payload.get("sub"),

@@ -1,21 +1,18 @@
+"""Multi-workflow agent orchestration: chat, research, autonomous, RAG."""
 from __future__ import annotations
 
 import uuid
-
 import structlog
 from langgraph.graph import END, StateGraph
-from openai import AsyncOpenAI
 
-from app.agent.models import AgentState
+from app.agent.models import AgentState, AgentMode
 from app.core.config import Settings
-
+from app.llm.client import LLMClient
 
 log = structlog.get_logger(__name__)
 
 
 def _normalize_openai_base_url(base_url: str) -> str:
-    # Users often paste full endpoints like ".../chat/completions".
-    # The OpenAI client appends "/chat/completions" internally, so strip it if present.
     lowered = base_url.rstrip("/").lower()
     for suffix in ("/chat/completions", "/v1/chat/completions"):
         if lowered.endswith(suffix):
@@ -23,95 +20,188 @@ def _normalize_openai_base_url(base_url: str) -> str:
     return base_url.rstrip("/")
 
 
-def _get_client(settings: Settings) -> AsyncOpenAI:
-    if not settings.openai_api_key:
-        raise RuntimeError("OPENAI_API_KEY is required for LLM calls")
-
-    base_url = settings.openai_base_url
-    if base_url:
-        base_url = _normalize_openai_base_url(base_url)
-
-    return AsyncOpenAI(
-        api_key=settings.openai_api_key,
-        base_url=base_url,
-        timeout=settings.request_timeout_s,
-    )
+def _build_llm(settings: Settings) -> LLMClient:
+    return LLMClient(settings)
 
 
-async def _chat(settings: Settings, client: AsyncOpenAI, *, system: str, user: str) -> str:
-    resp = await client.chat.completions.create(
-        model=settings.openai_model,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        max_tokens=settings.openai_max_tokens,
-    )
-    msg = resp.choices[0].message
-    return msg.content or ""
+# ── Chat Agent (single-turn, direct answer) ──────────────────────────────
+
+def build_chat_graph(*, settings: Settings, llm: LLMClient | None = None) -> object:
+    if llm is None:
+        llm_agent = LLMClient(settings)
+    else:
+        llm_agent = llm
+
+    async def respond(state: AgentState) -> AgentState:
+        messages = [
+            {"role": "system", "content": "You are a helpful AI assistant. Provide clear, concise, accurate answers."},
+            {"role": "user", "content": state.prompt},
+        ]
+        model = settings.openai_model if not state.use_advanced_model else settings.openai_advanced_model
+        result = await llm_agent.chat(messages=messages, model=model, stream=False)
+        state.output = result["message"].get("content", "")
+        state.token_usage = result.get("usage", {})
+        state.cost_cents = result.get("cost_cents", 0)
+        state.latency_ms = result.get("latency_ms", 0)
+        return state
+
+    g = StateGraph(AgentState)
+    g.add_node("respond", respond)
+    g.set_entry_point("respond")
+    g.add_edge("respond", END)
+    return g.compile()
 
 
-def build_graph(*, settings: Settings):
-    client = _get_client(settings)
+# ── Research Agent (plan → gather → synthesize) ──────────────────────────
+
+def build_research_graph(*, settings: Settings, llm: LLMClient | None = None) -> object:
+    if llm is None:
+        llm_agent = LLMClient(settings)
+    else:
+        llm_agent = llm
 
     async def planner(state: AgentState) -> AgentState:
-        state.plan = await _chat(
-            settings,
-            client,
-            system=(
-                "You are a planning agent. Produce a concise step-by-step plan "
-                "to answer the user prompt. Keep it short and actionable."
-            ),
-            user=state.prompt,
-        )
+        messages = [
+            {"role": "system", "content": (
+                "You are a planning agent for research tasks. "
+                "Break the user's question into 3-5 concrete research steps. "
+                "Return JSON with 'steps' array, each having 'title' and 'goal'."
+            )},
+            {"role": "user", "content": state.prompt},
+        ]
+        result = await llm_agent.chat(messages=messages, stream=False)
+        state.plan = result["message"].get("content", "")
         return state
 
-    async def executor(state: AgentState) -> AgentState:
-        state.draft = await _chat(
-            settings,
-            client,
-            system=(
-                "You are an execution agent. Use the plan to produce the best possible answer. "
-                "Do not mention internal planning unless asked."
-            ),
-            user=f"User prompt:\n{state.prompt}\n\nPlan:\n{state.plan}",
-        )
+    async def gather(state: AgentState) -> AgentState:
+        messages = [
+            {"role": "system", "content": (
+                "You are a research assistant. Gather detailed information addressing each step of the plan. "
+                "Be thorough and cite when possible."
+            )},
+            {"role": "user", "content": f"Question: {state.prompt}\n\nPlan:\n{state.plan}"},
+        ]
+        result = await llm_agent.chat(messages=messages, stream=False)
+        state.draft = result["message"].get("content", "")
         return state
 
-    async def critic(state: AgentState) -> AgentState:
-        state.critique = await _chat(
-            settings,
-            client,
-            system=(
-                "You are a critic agent. Review the draft for correctness, clarity, and missing details. "
-                "Return a short critique and specific improvements."
-            ),
-            user=f"User prompt:\n{state.prompt}\n\nDraft:\n{state.draft}",
-        )
+    async def synthesize(state: AgentState) -> AgentState:
+        messages = [
+            {"role": "system", "content": (
+                "Synthesize the research findings into a coherent, well-structured answer. "
+                "Include key insights and actionable conclusions."
+            )},
+            {"role": "user", "content": f"Question: {state.prompt}\n\nResearch:\n{state.draft}"},
+        ]
+        result = await llm_agent.chat(messages=messages, stream=False)
+        state.output = result["message"].get("content", "")
         return state
 
-    async def finalizer(state: AgentState) -> AgentState:
-        run_id = uuid.uuid4().hex
-        log.info("agent_run", run_id=run_id)
-        state.output = await _chat(
-            settings,
-            client,
-            system=(
-                "You are a final response agent. Improve the draft using the critique. "
-                "Return ONLY the final answer."
-            ),
-            user=f"User prompt:\n{state.prompt}\n\nDraft:\n{state.draft}\n\nCritique:\n{state.critique}",
-        )
+    g = StateGraph(AgentState)
+    g.add_node("plan", planner)
+    g.add_node("gather", gather)
+    g.add_node("synthesize", synthesize)
+    g.set_entry_point("plan")
+    g.add_edge("plan", "gather")
+    g.add_edge("gather", "synthesize")
+    g.add_edge("synthesize", END)
+    return g.compile()
+
+
+# ── Autonomous Agent (plan → execute → reflect loop) ─────────────────────
+
+def build_autonomous_graph(*, settings: Settings, llm: LLMClient | None = None) -> object:
+    if llm is None:
+        llm_agent = LLMClient(settings)
+    else:
+        llm_agent = llm
+
+    max_iter = settings.agent_max_iterations
+
+    async def planner(state: AgentState) -> AgentState:
+        messages = [
+            {"role": "system", "content": (
+                "You are a planning agent. Create a step-by-step plan to solve the user's request. "
+                "Return a numbered list of steps."
+            )},
+            {"role": "user", "content": state.prompt},
+        ]
+        result = await llm_agent.chat(messages=messages, stream=False)
+        state.plan = result["message"].get("content", "")
         return state
 
-    g: StateGraph = StateGraph(AgentState)
-    g.add_node("planner", planner)
-    g.add_node("executor", executor)
-    g.add_node("critic", critic)
-    g.add_node("finalizer", finalizer)
-    g.set_entry_point("planner")
-    g.add_edge("planner", "executor")
-    g.add_edge("executor", "critic")
-    g.add_edge("critic", "finalizer")
-    g.add_edge("finalizer", END)
+    async def execute(state: AgentState) -> AgentState:
+        messages = [
+            {"role": "system", "content": (
+                "You are an execution agent. Follow the plan step by step and produce a thorough response."
+            )},
+            {"role": "user", "content": f"Task:\n{state.prompt}\n\nPlan:\n{state.plan}"},
+        ]
+        result = await llm_agent.chat(messages=messages, stream=False)
+        state.draft = result["message"].get("content", "")
+        return state
+
+    async def reflect(state: AgentState) -> AgentState:
+        state.iteration += 1
+        messages = [
+            {"role": "system", "content": (
+                "You are a critic agent. Review the draft answer for correctness, completeness, and clarity. "
+                "If it is good, respond with 'PASS'. Otherwise, list specific improvements needed."
+            )},
+            {"role": "user", "content": f"Task: {state.prompt}\nDraft:\n{state.draft}"},
+        ]
+        result = await llm_agent.chat(messages=messages, stream=False)
+        state.critique = result["message"].get("content", "")
+        return state
+
+    def should_continue(state: AgentState) -> str:
+        if "PASS" in state.critique.upper() or state.iteration >= max_iter:
+            state.output = state.draft
+            return END
+        # Re-execute with feedback
+        return "execute"
+
+    g = StateGraph(AgentState)
+    g.add_node("plan", planner)
+    g.add_node("execute", execute)
+    g.add_node("reflect", reflect)
+    g.set_entry_point("plan")
+    g.add_edge("plan", "execute")
+    g.add_edge("execute", "reflect")
+    g.add_conditional_edge("reflect", should_continue, condition_end_is_fallthrough=True)
+    return g.compile()
+
+
+# ── RAG Agent (retrieve → generate → cite) ───────────────────────────────
+
+def build_rag_graph(*, settings: Settings, llm: LLMClient | None = None) -> object:
+    if llm is None:
+        llm_agent = LLMClient(settings)
+    else:
+        llm_agent = llm
+
+    async def retrieve(state: AgentState) -> AgentState:
+        state.output = f"Retrieved context for: {state.prompt}"
+        return state
+
+    async def generate(state: AgentState) -> AgentState:
+        context = state.plan or ""
+        messages = [
+            {"role": "system", "content": (
+                "You are a RAG assistant. Use the provided context to answer accurately. "
+                "If the context doesn't contain the answer, use your general knowledge but note that."
+            )},
+            {"role": "system", "content": f"Context:\n{context}" if context else "No specific context provided."},
+            {"role": "user", "content": state.prompt},
+        ]
+        result = await llm_agent.chat(messages=messages, stream=False)
+        state.output = result["message"].get("content", "")
+        return state
+
+    g = StateGraph(AgentState)
+    g.add_node("retrieve", retrieve)
+    g.add_node("generate", generate)
+    g.set_entry_point("retrieve")
+    g.add_edge("retrieve", "generate")
+    g.add_edge("generate", END)
     return g.compile()

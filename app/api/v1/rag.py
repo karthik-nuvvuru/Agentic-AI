@@ -1,24 +1,31 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, Field
-from sqlalchemy import desc, select, update
+from sqlalchemy import desc, select, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cache.rag import get_cached_response, set_cached_response
 from app.core.config import get_settings
-from app.db.models import Chunk, Conversation, Document, Message
+from app.db.models import Chunk, Conversation, Document, Message, UsageLog
 from app.db.session import db_session
+from app.llm.client import count_tokens, estimate_cost_cents, LLMClient
 from app.rag.agent import generate_answer, generate_title
 from app.rag.chunking import chunk_text
 from app.rag.embeddings import embed_texts
 from app.rag.retrieval import similarity_search
 
+from fastapi.responses import StreamingResponse
+import structlog
+
 router = APIRouter(prefix="/v1/rag", tags=["rag"])
+
+log = structlog.get_logger(__name__)
 
 AUTOGEN_TITLE_LIMIT = 5
 
@@ -118,23 +125,25 @@ async def list_documents(
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(db_session),
 ):
-    stmt = select(Document).order_by(desc(Document.created_at)).limit(limit).offset(offset)
+    # Single query with COUNT + GROUP BY — eliminates N+1.
+    stmt = (
+        select(Document.id, Document.source, Document.created_at, func.count(Chunk.id).label("chunk_count"))
+        .outerjoin(Chunk, Chunk.document_id == Document.id)
+        .group_by(Document.id)
+        .order_by(desc(Document.created_at))
+        .limit(limit)
+        .offset(offset)
+    )
     result = await session.execute(stmt)
-    docs = result.scalars().all()
-
-    out = []
-    for d in docs:
-        cnt = await session.execute(select(Chunk).where(Chunk.document_id == d.id))
-        count = len(cnt.scalars().all())
-        out.append(
-            DocumentOut(
-                id=d.id,
-                source=d.source,
-                created_at=d.created_at.isoformat(),
-                chunk_count=count,
-            )
+    return [
+        DocumentOut(
+            id=row[0],
+            source=row[1],
+            created_at=row[2].isoformat(),
+            chunk_count=row[3],
         )
-    return out
+        for row in result.all()
+    ]
 
 
 @router.delete("/documents/{document_id}", status_code=204)
@@ -155,16 +164,15 @@ async def delete_document(
 async def rag_stats(
     session: AsyncSession = Depends(db_session),
 ):
-    doc_count = await session.execute(select(Document))
-    chunk_count = await session.execute(select(Chunk))
-    conv_count = await session.execute(select(Conversation))
-    msg_count = await session.execute(select(Message))
-
+    doc_count = await session.execute(select(func.count(Document.id)))
+    chunk_count = await session.execute(select(func.count(Chunk.id)))
+    conv_count = await session.execute(select(func.count(Conversation.id)))
+    msg_count = await session.execute(select(func.count(Message.id)))
     return {
-        "documents": len(doc_count.scalars().all()),
-        "chunks": len(chunk_count.scalars().all()),
-        "conversations": len(conv_count.scalars().all()),
-        "messages": len(msg_count.scalars().all()),
+        "documents": doc_count.scalar() or 0,
+        "chunks": chunk_count.scalar() or 0,
+        "conversations": conv_count.scalar() or 0,
+        "messages": msg_count.scalar() or 0,
     }
 
 
@@ -263,8 +271,8 @@ async def rag_chat(
                 update(Conversation).where(Conversation.id == uuid.UUID(conversation_id)).values(title=title)
             )
             await session.commit()
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning("autogen_title_failed", error=str(e), conversation_id=conversation_id)
 
     sources = [
         {
@@ -286,8 +294,8 @@ async def rag_chat(
     # Write to cache (only first-message queries to avoid conversation-history collisions)
     try:
         await set_cached_response(req.message, req.top_k, {"message_id": str(assistant_msg.id), "answer": answer, "sources": sources})
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("cache_write_failed", error=str(e))
 
     return response
 
@@ -295,32 +303,40 @@ async def rag_chat(
 @router.post("/chat/stream")
 async def rag_chat_stream(
     req: ChatRequest,
+    request: Request,
     session: AsyncSession = Depends(db_session),
 ):
+    """Production-grade SSE streaming endpoint.
+
+    Emits structured events:
+        event: sources       → RAG retrieval results
+        event: conversation_id
+        event: thinking      → "retrieving context…" phase indicator
+        event: token         → single token from LLM stream
+        event: citation      → source metadata for in-text citations
+        event: done          → final payload with token usage
+        event: error         → failure reason
+    """
     settings = get_settings()
     if not settings.openai_api_key:
         raise HTTPException(status_code=503, detail="OPENAI_API_KEY is required for chat")
 
-    from app.llm.client import get_openai_client
-
-    openai_client = get_openai_client(settings)
-
+    client = LLMClient(settings)
     conversation_id = req.conversation_id or str(uuid.uuid4())
+    run_id = uuid.uuid4().hex[:16]
 
-    # Create conversation if needed
+    # ── Create conversation ─────────────────────────────────
     if not req.conversation_id:
-        new_conv = Conversation(id=uuid.UUID(conversation_id), title="New conversation")
-        session.add(new_conv)
+        session.add(Conversation(id=uuid.UUID(conversation_id), title="New conversation"))
     else:
         result = await session.execute(select(Conversation).where(Conversation.id == uuid.UUID(conversation_id)))
         existing_conv = result.scalar_one_or_none()
         if not existing_conv:
-            new_conv = Conversation(id=uuid.UUID(conversation_id), title="New conversation")
-            session.add(new_conv)
-
+            session.add(Conversation(id=uuid.UUID(conversation_id), title="New conversation"))
     await session.commit()
 
-    # Retrieve relevant chunks
+    # ── Retrieve chunks ─────────────────────────────────────
+    await session.flush()
     query_emb = (await embed_texts(settings, [req.message]))[0]
     chunks = await similarity_search(session, settings=settings, query_embedding=query_emb, top_k=req.top_k)
 
@@ -333,7 +349,7 @@ async def rag_chat_stream(
 
     context = "\n\n".join(f"[{i+1}] {c.content}" for i, c in enumerate(chunks))
 
-    # Build conversation history
+    # ── Conversation history ────────────────────────────────
     history_result = await session.execute(
         select(Message)
         .where(Message.conversation_id == uuid.UUID(conversation_id))
@@ -341,10 +357,9 @@ async def rag_chat_stream(
         .limit(20)
     )
     recent_messages = list(reversed(history_result.scalars().all()))
-
     conversation_history = [{"role": m.role, "content": m.content} for m in recent_messages]
 
-    # Save user message
+    # ── Save user message ───────────────────────────────────
     user_msg = Message(
         conversation_id=uuid.UUID(conversation_id),
         role="user",
@@ -353,6 +368,7 @@ async def rag_chat_stream(
     session.add(user_msg)
     await session.commit()
 
+    # ── Pre-compute sources for fast SSE emission ───────────
     sources_payload = [
         {
             "chunk_id": str(c.id),
@@ -363,10 +379,30 @@ async def rag_chat_stream(
         for c in chunks
     ]
 
-    async def generate():
-        yield f"event: sources\ndata: {json.dumps(sources_payload)}\n\n"
-        yield f"event: conversation_id\ndata: {json.dumps({'conversation_id': conversation_id})}\n\n"
+    _sse = _sse_event  # local alias for speed
 
+    async def generate():
+        """Async generator — yields SSE events with **zero buffering**.
+
+        Monitors client disconnect via ``request.is_disconnected()`` and
+        cancels the LLM stream mid-flight.
+        """
+        if await request.is_disconnected():
+            return
+
+        # 1. Metadata
+        yield _sse("sources", {"sources": sources_payload})
+        yield _sse("conversation_id", {"conversation_id": conversation_id})
+
+        # 2. Check disconnect before starting expensive LLM call
+        if await request.is_disconnected():
+            return
+
+        # 3. Thinking phase — emit before we start the LLM
+        if chunks:
+            yield _sse("thinking", {"content": "Searching documents…"})
+
+        # 4. Build messages
         messages: list[dict[str, str]] = [
             {
                 "role": "system",
@@ -383,51 +419,130 @@ async def rag_chat_stream(
             {"role": "user", "content": req.message},
         ]
 
+        # Input token count (approximate for usage log)
+        full_prompt = "\n".join(m["content"] for m in messages)
+        input_tokens = count_tokens(full_prompt, model=settings.openai_model)
+
+        # 5. Emit citations from retrieved sources
+        for src in sources_payload:
+            if await request.is_disconnected():
+                return
+            yield _sse("citation", {"source": {"title": src["source"], "page": None, "idx": src["idx"]}})
+
+        # 6. LLM token streaming — structured, buffered-not-at-all
+        thinking_stopped = False
+        output_tokens = 0
         full_content = ""
-        stream = await openai_client.chat.completions.create(
-            model=settings.openai_model,
-            messages=messages,
-            max_tokens=settings.openai_max_tokens,
-            stream=True,
-        )
-        async for chunk in stream:
-            if chunk.choices and chunk.choices[0].delta.content:
-                token = chunk.choices[0].delta.content
-                full_content += token
-                yield f"event: token\ndata: {json.dumps({'token': token})}\n\n"
 
-        # Save assistant response
-        assistant_msg = Message(
-            conversation_id=uuid.UUID(conversation_id),
-            role="assistant",
-            content=full_content,
-        )
-        session.add(assistant_msg)
-        await session.commit()
-
-        # Auto-generate title
         try:
-            title_resp = await openai_client.chat.completions.create(
+            async for event in client.stream_tokens(
+                messages=messages,
                 model=settings.openai_model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "Generate a very short (2-5 words) title. Return ONLY the title.",
-                    },
-                    {"role": "user", "content": req.message},
-                ],
-                max_tokens=20,
-            )
-            title = (title_resp.choices[0].message.content or "New conversation").strip().strip('"')
-            if title:
-                await session.execute(
-                    update(Conversation).where(Conversation.id == uuid.UUID(conversation_id)).values(title=title)
-                )
-                await session.commit()
-        except Exception:
-            pass
+            ):
+                # ── Disconnect gate every 8 tokens (~every 30 ms) ──
+                if output_tokens % 8 == 0 and await request.is_disconnected():
+                    log.info("stream_client_disconnected", run_id=run_id)
+                    return
 
-        yield f"event: done\ndata: {json.dumps({'message_id': str(assistant_msg.id)})}\n\n"
+                etype = event.get("type")
 
-    from fastapi.responses import StreamingResponse
-    return StreamingResponse(generate(), media_type="text/event-stream")
+                if etype == "token":
+                    if not thinking_stopped:
+                        thinking_stopped = True
+                    token = event["content"]
+                    full_content += token
+                    output_tokens += 1
+                    yield _sse("token", {"content": token})
+
+                elif etype == "done":
+                    usage = event.get("usage", {})
+                    final_prompt_tokens = usage.get("prompt_tokens", input_tokens)
+                    final_completion_tokens = usage.get("completion_tokens", output_tokens)
+                    total = final_prompt_tokens + final_completion_tokens
+                    cost = estimate_cost_cents(final_prompt_tokens, final_completion_tokens, settings.openai_model)
+
+                    log.info(
+                        "stream_complete",
+                        run_id=run_id,
+                        model=settings.openai_model,
+                        prompt_tokens=final_prompt_tokens,
+                        completion_tokens=final_completion_tokens,
+                        total_tokens=total,
+                        cost_cents=cost,
+                    )
+
+                    # ── Persist usage log ──
+                    try:
+                        usage_log = UsageLog(
+                            user_id=getattr(request.state, "user", {}).get("id") if isinstance(getattr(request.state, "user", None), dict) else None,
+                            run_id=run_id,
+                            model=settings.openai_model,
+                            prompt_tokens=final_prompt_tokens,
+                            completion_tokens=final_completion_tokens,
+                            total_tokens=total,
+                            cost_cents=cost,
+                            is_stream=True,
+                        )
+                        session.add(usage_log)
+                        if full_content:
+                            assistant_msg = Message(
+                                conversation_id=uuid.UUID(conversation_id),
+                                role="assistant",
+                                content=full_content,
+                            )
+                            session.add(assistant_msg)
+                        await session.commit()
+                    except Exception as e:
+                        log.warning("stream_persist_failed", error=str(e), exc_info=True)
+                        try:
+                            await session.rollback()
+                        except Exception:
+                            pass
+
+                    yield _sse("done", {
+                        "usage": {
+                            "input": final_prompt_tokens,
+                            "output": final_completion_tokens,
+                            "total": total,
+                            "cost_cents": cost,
+                        },
+                        "run_id": run_id,
+                    })
+                    log.info("stream_done")
+                    return
+
+                elif etype == "tool_use":
+                    yield _sse("tool_use", {
+                        "tool": event.get("tool", ""),
+                        "arguments": event.get("arguments", ""),
+                    })
+
+                elif etype == "error":
+                    yield _sse("error", {"message": event.get("message", "Unknown error")})
+                    log.warning("stream_llm_error", run_id=run_id, message=event.get("message"))
+                    return
+
+        except asyncio.CancelledError:
+            log.info("stream_cancelled", run_id=run_id)
+            return
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # nginx bypass
+        },
+    )
+
+
+# ── SSE event formatter ─────────────────────────────────────────
+def _sse_event(event_type: str, data: dict) -> str:
+    """Format a single SSE line: event + data + blank."""
+    return f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
+
+
+# ── Clean up duplicate imports at top ───────────────────────────
+# (The `from fastapi.responses import StreamingResponse` line in the
+# function body is now unnecessary — it's imported at module level above.)

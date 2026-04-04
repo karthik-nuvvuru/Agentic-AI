@@ -1,30 +1,105 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
+/* ── CSS custom properties for dark/light mode ─────────────────────── */
+:root {
+  /* Dark mode (default) — all colors via variables, no hardcoded hex in components */
+  --color-bg: #09090b;
+  --color-surface: rgba(255,255,255,.04);
+  --color-surface-hover: rgba(255,255,255,.06);
+  --color-sidebar-bg: #0a0a0e;
+  --color-text-primary: #e4e4e7;
+  --color-text-secondary: #a1a1aa;
+  --color-text-disabled: rgba(255,255,255,.25);
+  --color-border: rgba(255,255,255,.08);
+  --color-link: #818cf8;
+  --color-citation-bg: rgba(99,102,241,.06);
+  --color-citation-hover-bg: rgba(99,102,241,.12);
+  --color-citation-border: rgba(99,102,241,.15);
+  --color-chip-bg: rgba(255,255,255,.04);
+  --color-chip-border: rgba(255,255,255,.06);
+  --color-input-bg: rgba(255,255,255,.03);
+  --color-input-border: rgba(255,255,255,.05);
+  --color-input-focus-border: rgba(99,102,241,.3);
+  --color-input-focus-shadow: 0 0 0 2px rgba(99,102,241,.06);
+  --color-placeholder: rgba(255,255,255,.18);
+  --color-icon: rgba(255,255,255,.3);
+  --color-icon-hover: rgba(255,255,255,.05);
+  --color-avatar-bg: rgba(99,102,241,.08);
+  --color-avatar-border: 1px solid rgba(99,102,241,.12);
+  --color-avatar-icon: #818cf8;
+  --color-typing-bg: rgba(255,255,255,.02);
+  --color-typing-border: rgba(255,255,255,.04);
+  --color-typing-dot: #6366f1;
+  --color-active-bg: rgba(99,102,241,.08);
+  --color-active-text: #c4b5fd;
+  --color-hover-bg: rgba(255,255,255,.04);
+  --color-header-bg: #09090b;
+  --color-drag-overlay: rgba(99,102,241,.03);
+  --color-skeleton-bg: rgba(128,128,128,.06);
+  --color-code-bg: #0a0a0e;
+  --color-code-header: rgba(255,255,255,.015);
+  --color-code-border: rgba(255,255,255,.06);
+  --color-code-text: #e4e4e7;
+  --color-inline-code-bg: rgba(99,102,241,.12);
+  --color-inline-code-text: #a78bfa;
+  --color-search-bg: rgba(255,255,255,.03);
+  --color-border-focus: #818cf8;
+  --color-btn-bg: rgba(255,255,255,.06);
+  --color-btn-bg-hover: rgba(255,255,255,.1);
+  --color-btn-border: rgba(255,255,255,.08);
+  --color-btn-border-hover: rgba(255,255,255,.15);
+  --shadow-user-bubble: 0 1px 4px rgba(99,102,241,.12);
+
+  --gradient-user-bubble: linear-gradient(135deg,#6366f1 0%,#7c3aed 100%);
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* ── Reset ─────────────────────────────────────────────────────────── */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body, #root { height: 100%; }
+
 body {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  background: #09090b;
-  color: #f4f4f5;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  transition: background 0.3s, color 0.3s;
 }
-#root { background: #09090b; }
 
+#root { background: var(--color-bg); transition: background 0.3s; }
+
+/* ── Code blocks — for rehype-highlight (github-dark) ────────────── */
+pre code.hljs {
+  background: transparent !important;
+  padding: 0 !important;
+}
+.hljs { background: transparent !important; }
+
+/* ── Animations ──────────────────────────────────────────────────── */
 @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
 @keyframes fadeInUp { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: translateY(0) } }
 @keyframes fadeInDown { from { opacity: 0; transform: translateY(-8px) } to { opacity: 1; transform: translateY(0) } }
 @keyframes typingDot { 0%,80%,100% { opacity: .2; transform: scale(.8) } 40% { opacity: 1; transform: scale(1.1) } }
 @keyframes blink { 0%,100% { opacity: 1 } 50% { opacity: 0 } }
-@keyframes shimmer { 0% { background-position: -200% 0 } 100% { background-position: 200% 0 } }
 @keyframes chipIn { from { opacity: 0; transform: scale(.85) translateY(4px) } to { opacity: 1; transform: scale(1) translateY(0) } }
-@keyframes slideUp { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: translateY(0) } }
+@keyframes stopPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(248,113,113,.4) } 50% { box-shadow: 0 0 0 8px rgba(248,113,113,0) } }
 @keyframes glow { 0%,100% { box-shadow: 0 0 12px rgba(99,102,241,.15) } 50% { box-shadow: 0 0 24px rgba(99,102,241,.25) } }
 
+/* ── Scrollbar ───────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 5px }
 ::-webkit-scrollbar-track { background: transparent }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,.06); border-radius: 3px }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.12) }
+::-webkit-scrollbar-thumb { background: rgba(128,128,128,.06); border-radius: 3px }
+::-webkit-scrollbar-thumb:hover { background: rgba(128,128,128,.12) }
 
 ::selection { background: rgba(99,102,241,.3); }
+
+/* ── Touch-friendly tap targets ──────────────────────────────────── */
+@media (max-width: 600px) {
+  button, [role="button"], .MuiIconButton-root {
+    min-width: 44px !important;
+    min-height: 44px !important;
+  }
+}

@@ -4,7 +4,7 @@ import json
 from typing import Any
 
 from app.core.config import Settings
-from app.llm.client import get_openai_client
+from app.llm.client import LLMClient
 
 
 def build_system_prompt(top_k: int = 6) -> str:
@@ -40,7 +40,7 @@ async def generate_answer(
     conversation_history: list[dict[str, str]],
     last_message: str,
 ) -> str:
-    client = get_openai_client(settings)
+    client = LLMClient(settings)
 
     messages: list[dict[str, str]] = [
         {"role": "system", "content": build_system_prompt()},
@@ -70,7 +70,7 @@ async def generate_title(
     settings: Settings,
     first_message: str,
 ) -> str:
-    client = get_openai_client(settings)
+    client = LLMClient(settings)
     resp = await client.chat.completions.create(
         model=settings.openai_model,
         messages=[

@@ -32,6 +32,8 @@ async def get_cached_response(
             _get_redis_url(), encoding="utf-8", decode_responses=True
         )
         val = await client.get(_cache_key(message, top_k))
+    except aioredis.ConnectionError:
+        return None
     except Exception:
         return None
     if val:
