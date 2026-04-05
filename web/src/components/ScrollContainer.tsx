@@ -15,7 +15,7 @@ const ScrollBox = styled(Box)(({ theme }) => ({
   "&::-webkit-scrollbar-thumb:hover": { background: theme.palette.text.secondary },
 }));
 
-export function ScrollContainer({ children }: { children: React.ReactNode }) {
+export function ScrollContainer({ children }: { children: React.ReactNode; isStreaming?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {

@@ -1,636 +1,507 @@
 import {
-  AppBar,
   Avatar,
   Box,
+  Button,
   CssBaseline,
-  Drawer,
+  Divider,
   IconButton,
   Menu,
   MenuItem,
   Stack,
+  TextField,
   ThemeProvider,
-  Toolbar,
   Tooltip,
   Typography,
   createTheme,
   useMediaQuery,
 } from "@mui/material";
-import AddIcon from "@mui/icons-material/Add";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
-import DarkModeOutlined from "@mui/icons-material/DarkModeOutlined";
-import LightModeOutlined from "@mui/icons-material/LightModeOutlined";
-import MenuIcon from "@mui/icons-material/Menu";
-import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
-import SendIcon from "@mui/icons-material/Send";
-import SmartToyIcon from "@mui/icons-material/SmartToy";
-import StopCircleIcon from "@mui/icons-material/StopCircle";
-import UploadFileIcon from "@mui/icons-material/UploadFile";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import ReactDOM from "react-dom/client";
-
-import { getAuthHeader, clearTokens, getAccessToken } from "./auth";
+import {
+  Add as AddIcon,
+  DarkModeOutlined as DarkModeOutlined,
+  LightModeOutlined as LightModeOutlined,
+  Menu as MenuIcon,
+  SmartToy as SmartToyIcon,
+  UploadFile as UploadFileIcon,
+} from "@mui/icons-material";
+import { useCallback, useEffect, useRef, useState } from "react";
+import "./index.css";
+import { apiMe, apiLogout, type Conv } from "./services/api";
 import AuthScreen from "./AuthScreen";
-import { ScrollContainer } from "./components/ScrollContainer";
-import { WelcomeScreen } from "./components/WelcomeScreen";
-import AssistantMessage from "./components/AssistantMessage";
-import UserMessage from "./components/UserMessage";
-import { InputArea } from "./components/InputArea";
+import { useChat } from "./hooks/useChat";
 import { Sidebar } from "./components/Sidebar";
-import { ChatSkeleton, SidebarSkeletons } from "./components/Skeleton";
+import { InputArea } from "./components/InputArea";
+import { WelcomeScreen } from "./components/WelcomeScreen";
+import { MessageBubble } from "./components/MessageBubble";
+import { ScrollContainer } from "./components/ScrollContainer";
+import { SidebarSkeletons } from "./components/Skeleton";
 
-/* ------------------------------------------------------------------ */
-/*  Types                                                              */
-/* ------------------------------------------------------------------ */
-type Src = { source: string; idx: number };
-type CM = {
-  role: "user" | "assistant";
-  content: string;
-  sources?: Src[];
-  files?: string[];
-  id?: string;
-};
-type Conv = { id: string; title: string; created_at?: string; updated_at?: string };
-type CF = Conv & { messages: { role: string; content: string; created_at: string }[] };
-type PF = { file: File; prog: number; done: boolean; err?: string };
-
-const DRAWER_W = 260;
-const API = import.meta.env.VITE_API_BASE || "";
-const MAX_F = 10_485_760;
-const EXTS = [".pdf", ".txt", ".md", ".csv", ".json"];
-
-/* ------------------------------------------------------------------ */
-/*  Theme — all palette values use raw colors (MUI cannot handle CSS custom properties) */
-/* ------------------------------------------------------------------ */
 const darkTheme = createTheme({
   palette: {
     mode: "dark",
     primary: { main: "#667eea" },
-    background: { default: "#09090b", paper: "rgba(255,255,255,.04)" },
-    text: { primary: "#e4e4e7", secondary: "#a1a1aa", disabled: "rgba(255,255,255,.25)" },
-    divider: "rgba(255,255,255,.08)",
+    background: { default: "#09090b", paper: "rgba(255,255,255,.05)" },
+    text: { primary: "#e4e4e7", secondary: "#a1a1aa", disabled: "rgba(255,255,255,.3)" },
+    divider: "rgba(255,255,255,.1)",
     error: { main: "#f87171" },
     success: { main: "#34d399" },
   },
-  shape: { borderRadius: 12 },
-  typography: {
-    fontFamily: ["Inter", "system-ui", "Segoe UI", "Roboto", "Arial"].join(","),
-  },
+  shape: { borderRadius: 10 },
+  typography: { fontFamily: "'Inter', system-ui, -apple-system, sans-serif" },
   components: {
     MuiButton: { styleOverrides: { root: { textTransform: "none", fontWeight: 500, borderRadius: 8 } } },
     MuiPaper: { styleOverrides: { root: { backgroundImage: "none" } } },
-    MuiSkeleton: { styleOverrides: { root: { bgcolor: "rgba(128,128,128,.06)" } } },
+    MuiSkeleton: { styleOverrides: { root: { bgcolor: "rgba(128,128,128,.08)" } } },
+    MuiListItemButton: { styleOverrides: { root: { minHeight: 40, borderRadius: 8 } } },
+    MuiTextField: {
+      styleOverrides: { root: { "& .MuiOutlinedInput-root": { borderRadius: 12, backgroundColor: "rgba(255,255,255,.04)" } } },
+    },
   },
 });
 
-const lightTheme = createTheme({
-  palette: {
-    mode: "light",
-    primary: { main: "#667eea" },
-    background: { default: "#f8f9fa", paper: "#ffffff" },
-    text: { primary: "#1a1a2e", secondary: "#4a4a68", disabled: "#a0a0b8" },
-    divider: "#e0e0e8",
-    error: { main: "#dc2626" },
-    success: { main: "#16a34a" },
-  },
-  shape: { borderRadius: 12 },
-  typography: {
-    fontFamily: ["Inter", "system-ui", "Segoe UI", "Roboto", "Arial"].join(","),
-  },
-  components: {
-    MuiButton: { styleOverrides: { root: { textTransform: "none", fontWeight: 500, borderRadius: 8 } } },
-    MuiPaper: { styleOverrides: { root: { backgroundImage: "none" } } },
-    MuiSkeleton: { styleOverrides: { root: { bgcolor: "rgba(0,0,0,.06)" } } },
-  },
-});
-
-/* ------------------------------------------------------------------ */
-/*  Helpers                                                            */
-/* ------------------------------------------------------------------ */
-function fI(n: string) {
-  const e = "." + n.split(".").pop()!.toLowerCase();
-  const m: Record<string, string> = { ".pdf": "PDF", ".txt": "TXT", ".md": "MD", ".csv": "CSV", ".json": "JSON" };
-  return m[e] || "FILE";
+interface AppUser {
+  id: string;
+  email: string;
+  name: string;
 }
 
-/* ------------------------------------------------------------------ */
-/*  AppCore (authenticated)                                            */
-/* ------------------------------------------------------------------ */
-function AppCore({ user, onLogout }: { user: AUser; onLogout: () => void }) {
-  const [convs, setConvs] = useState<Conv[]>([]);
-  const [convId, setConvId] = useState<string | null>(null);
-  const [msgs, setMsgs] = useState<CM[]>([]);
+export default function App() {
+  const [user, setUser] = useState<AppUser | null>(null);
+  const [ready, setReady] = useState(false);
   const [input, setInput] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [streamT, setStreamT] = useState("");
-  const [streamS, setStreamS] = useState<Src[]>([]);
-  const [actrl, setCtrl] = useState<AbortController | null>(null);
-  const [drawer, setDrawer] = useState(false);
-  const [files, setFiles] = useState<PF[]>([]);
-  const [menuEl, setMenuEl] = useState<null | HTMLElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => {
+    return document.documentElement.classList.contains("light") ? false : true;
+  });
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [showRename, setShowRename] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const hAuth = useCallback(() => getAuthHeader(), []);
-  const tok = useMemo(() => getAuthHeader()["Authorization"] || "", []);
+  const chat = useChat();
+  const isMobile = useMediaQuery("(max-width:640px)");
 
-  // Detect mobile
-  const isMobile = useMediaQuery("(max-width:600px)");
+  /* Keep conv list ref current for header title display */
+  const convListRef = useRef<Conv[]>([]);
+  useEffect(() => { convListRef.current = chat.conversations; }, [chat.conversations]);
 
-  // ── Load conversations ──────────────────────────────────────
-  const loadConvs = useCallback(async () => {
-    const r = await fetch(`${API}/v1/conversations`, { headers: { Authorization: tok } }).catch(() => undefined);
-    if (r?.ok) setConvs(await r.json());
-  }, [tok]);
+  /* ── Auth check ──────────────────────────────────────── */
+  useEffect(() => {
+    apiMe()
+      .then((r) => setUser(r.user))
+      .catch(() => setUser(null))
+      .finally(() => setReady(true));
+  }, []);
 
   useEffect(() => {
-    void loadConvs();
-  }, [loadConvs]);
-
-  // ── New chat ────────────────────────────────────────────────
-  const newChat = useCallback(async () => {
-    setConvId(null);
-    setMsgs([]);
-    setStreamT("");
-    setStreamS([]);
-    setBusy(false);
-    setInput("");
-    setFiles([]);
-    setDrawer(false);
-    const r = await fetch(`${API}/v1/conversations`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: tok },
-      body: "{}",
-    }).catch(() => undefined);
-    if (r?.ok) {
-      const c: Conv = await r.json();
-      setConvs((p) => [c, ...p]);
-      setConvId(c.id);
+    if (user) {
+      chat.loadConversations();
     }
-  }, [tok]);
+  }, [user]);
 
-  // ── Pick conversation ──────────────────────────────────────
-  const pick = useCallback(async (id: string) => {
-    setConvId(id);
-    setMsgs([]);
-    setStreamT("");
-    setStreamS([]);
-    setFiles([]);
-    setDrawer(false);
-    setBusy(false);
-    const r = await fetch(`${API}/v1/conversations/${id}`, { headers: { Authorization: tok } }).catch(() => undefined);
-    if (r?.ok) {
-      const f: CF = await r.json();
-      setMsgs(f.messages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })));
-    }
-  }, [tok]);
-
-  // ── Delete conversation ─────────────────────────────────────
-  const nuke = useCallback(async (id: string) => {
-    await fetch(`${API}/v1/conversations/${id}`, {
-      method: "DELETE",
-      headers: { Authorization: tok },
-    }).catch(() => {});
-    setConvs((p) => p.filter((c) => c.id !== id));
-    if (convId === id) {
-      setConvId(null);
-      setMsgs([]);
-    }
-  }, [convId, tok]);
-
-  // ── File helpers ────────────────────────────────────────────
-  const addFiles = useCallback((fl: FileList | File[]) => {
-    const n: PF[] = [];
-    Array.from(fl).forEach((f) => {
-      const e = "." + (f.name.split(".").pop() || "").toLowerCase();
-      if (!EXTS.includes(e) || f.size > MAX_F) {
-        n.push({ file: f, prog: 0, done: true, err: f.size > MAX_F ? "Too large (10 MB)" : "Unsupported" });
-      } else {
-        n.push({ file: f, prog: 0, done: false });
-      }
-    });
-    setFiles((p) => [...p, ...n]);
-  }, []);
-
-  const rmF = useCallback((i: number) => setFiles((p) => { const n = [...p]; n.splice(i, 1); return n; }), []);
-
-  const resolveConvId = useCallback(async (): Promise<string> => {
-    if (convId) return convId;
-    const r = await fetch(`${API}/v1/conversations`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: tok },
-      body: "{}",
-    }).catch(() => undefined);
-    if (r?.ok) {
-      const c: Conv = await r.json();
-      setConvs((p) => [c, ...p]);
-      setConvId(c.id);
-      return c.id;
-    }
-    return "";
-  }, [convId, tok]);
-
-  // ── Ingest pending files ───────────────────────────────────
-  const ingest = useCallback(async (): Promise<string[]> => {
-    const todo = files.filter((f) => !f.done);
-    const ok: string[] = [];
-    for (const p of todo) {
-      try {
-        const fd = new FormData();
-        fd.append("file", p.file);
-        const u = new URL(`${API}/v1/rag/ingest/file`);
-        u.searchParams.set("source", p.file.name);
-        const iv = setInterval(
-          () => setFiles((x) => x.map((y) => (y === p ? { ...y, prog: Math.min(y.prog + 15, 90) } : y))),
-          200
-        );
-        const r = await fetch(u.toString(), { method: "POST", body: fd });
-        clearInterval(iv);
-        if (!r.ok) throw new Error("");
-        setFiles((x) => x.map((y) => (y === p ? { ...y, prog: 100, done: true } : y)));
-        ok.push(p.file.name);
-      } catch {
-        setFiles((x) => x.map((y) => (y === p ? { ...y, done: true, err: "Failed" } : y)));
-      }
-    }
-    return ok;
-  }, [files]);
-
-  // ── Send message (SSE streaming) ───────────────────────────
-  const send = useCallback(async () => {
+  /* ── Actions ─────────────────────────────────────────── */
+  const handleSend = useCallback(() => {
     const txt = input.trim();
-    if (!txt && files.filter((f) => !f.err).length === 0) return;
+    if (!txt && chat.pendingFiles.filter((f) => !f.error).length === 0) return;
 
-    const fn = files.filter((f) => !f.err).map((f) => f.file.name);
-    await ingest();
-
-    const cid = await resolveConvId();
-
-    if (txt) {
-      setMsgs((p) => [...p, { role: "user" as const, content: txt, files: fn.length ? fn : undefined }]);
-    } else if (fn.length) {
-      setMsgs((p) => [
-        ...p,
-        { role: "user" as const, content: `Uploaded ${fn.length} file${fn.length > 1 ? "s" : ""}.`, files: fn },
-      ]);
-    }
-
-    setInput("");
-    setBusy(true);
-    setStreamT("");
-    setStreamS([]);
-    setFiles([]);
-
-    const c = new AbortController();
-    setCtrl(c);
-
-    let at = "";
-    let as: Src[] = [];
-
-    try {
-      const body = txt || "Summarize the uploaded documents.";
-      const r = await fetch(`${API}/v1/rag/chat/stream`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: tok },
-        body: JSON.stringify({ message: body, conversation_id: cid || undefined, top_k: 6, stream: true }),
-        signal: c.signal,
+    if (chat.pendingFiles.length > 0) {
+      chat.ingestFiles().then((names) => {
+        const prompt = txt || `Summarize the uploaded documents: ${names.join(", ")}`;
+        setInput("");
+        chat.sendMessage(prompt);
       });
-
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-
-      const rd = r.body?.getReader();
-      if (!rd) throw new Error("ReadableStream not supported by browser");
-
-      const dec = new TextDecoder();
-      let buf = "";
-      for (;;) {
-        const { done, value } = await rd.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-
-        const ps = buf.split("\n\n");
-        buf = ps.pop() ?? "";
-
-        for (const pc of ps) {
-          if (!pc.trim()) continue;
-          const em = pc.match(/^event:\s*(.+)$/m);
-          const dm = pc.match(/^data:\s*(.+)$/m);
-          if (!em || !dm) continue;
-
-          let j: Record<string, unknown>;
-          try {
-            j = JSON.parse(dm[1].trim());
-          } catch {
-            continue;
-          }
-
-          const type = em[1].trim();
-
-          if (type === "sources") {
-            as = (j as any).sources ?? [];
-            setStreamS([...as]);
-          }
-
-          if (type === "token") {
-            at += (j as any).content ?? "";
-            setStreamT(at);
-          }
-
-          if (type === "error") {
-            setMsgs((p) => [...p, { role: "assistant" as const, content: `Error: ${(j as any).message || "Unknown"}` }]);
-            return;
-          }
-
-          if (type === "thinking") {
-            // Show typing dots (handled by AssistantMessage when content is empty)
-          }
-
-          if (type === "citation") {
-            const src = (j as any).source;
-            if (!as.find((s) => s.idx === src.idx)) {
-              as.push({ source: src.title || `src ${src.idx + 1}`, idx: src.idx });
-              setStreamS([...as]);
-            }
-          }
-        }
-      }
-    } catch (e: unknown) {
-      const name = (e as DOMException)?.name;
-      if (name !== "AbortError") {
-        if (!at) {
-          setMsgs((p) => [
-            ...p,
-            { role: "assistant" as const, content: `Error: ${(e as Error).message}` },
-          ]);
-        }
-      } else {
-        // Client disconnected — partial commit handled in stop()
-      }
-    } finally {
-      if (at) {
-        setMsgs((p) => [
-          ...p,
-          { role: "assistant" as const, content: at, sources: as.length ? [...as] : undefined },
-        ]);
-        void loadConvs();
-      }
-      setStreamT("");
-      setStreamS([]);
-      setBusy(false);
-      setCtrl(null);
+    } else {
+      setInput("");
+      chat.sendMessage(txt);
     }
-  }, [input, files, ingest, resolveConvId, tok, loadConvs]);
+  }, [input, chat]);
 
-  // ── Stop streaming ──────────────────────────────────────────
-  const stop = useCallback(() => {
-    actrl?.abort();
-    if (streamT) {
-      setMsgs((p) => [
-        ...p,
-        { role: "assistant" as const, content: streamT, sources: streamS.length ? [...streamS] : undefined },
-      ]);
-      void loadConvs();
-    }
-    setStreamT("");
-    setStreamS([]);
-    setBusy(false);
-    setCtrl(null);
-  }, [actrl, streamT, streamS, loadConvs]);
+  const handleStop = useCallback(() => { chat.stop(); }, [chat]);
 
-  // ── File upload standalone ──────────────────────────────────
-  const ing1 = useCallback(async (f: File) => {
-    setBusy(true);
-    try {
-      const fd = new FormData();
-      fd.append("file", f);
-      const u = new URL(`${API}/v1/rag/ingest/file`);
-      u.searchParams.set("source", f.name);
-      const r = await fetch(u.toString(), { method: "POST", body: fd });
-      const d = await r.json();
-      setMsgs((p) => [
-        ...p,
-        { role: "assistant" as const, content: `Ingested "${f.name}" (${d.chunks_added} chunks).` },
-      ]);
-    } catch {
-      setMsgs((p) => [...p, { role: "assistant" as const, content: "Ingest failed." }]);
-    } finally {
-      setBusy(false);
-      if (fileRef.current) fileRef.current.value = "";
+  const handleQuickQuestion = useCallback((q: string) => {
+    chat.sendMessage(q);
+  }, [chat]);
+
+  const handleNewChat = useCallback(async () => {
+    await chat.createChat();
+    if (isMobile) setSidebarOpen(false);
+  }, [chat, isMobile]);
+
+  const handleSelectChat = useCallback(async (id: string) => {
+    await chat.openChat(id);
+    if (isMobile) setSidebarOpen(false);
+  }, [chat, isMobile]);
+
+  const handleDeleteChat = useCallback((id: string) => {
+    chat.deleteChat(id);
+  }, [chat]);
+
+  const handleRenameChat = useCallback((id: string, title: string) => {
+    chat.renameChat(id, title);
+  }, [chat]);
+
+  const handleStartRename = useCallback(() => {
+    const current = convListRef.current.find((c) => c.id === chat.activeConvId);
+    setRenameValue(current?.title || "");
+    setShowRename(true);
+  }, [chat.activeConvId]);
+
+  const handleConfirmRename = useCallback(() => {
+    if (chat.activeConvId && renameValue.trim()) {
+      chat.renameChat(chat.activeConvId, renameValue.trim());
     }
+    setShowRename(false);
+  }, [chat.activeConvId, renameValue, chat]);
+
+  const toggleTheme = useCallback(() => {
+    const next = !darkMode;
+    setDarkMode(next);
+    document.documentElement.classList.toggle("dark", next);
+    document.documentElement.classList.toggle("light", !next);
+  }, [darkMode]);
+
+  const handleLogout = useCallback(async () => {
+    setAnchorEl(null);
+    await apiLogout();
+    sessionStorage.removeItem("auth_access_token");
+    setUser(null);
   }, []);
 
-  // ── Quick question from WelcomeScreen ───────────────────────
-  const setQuick = useCallback((q: string) => setInput(q), []);
+  const handleFileClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
 
-  // ── File input handler ─────────────────────────────────────
-  const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const f = e.target.files[0];
-      if (e.target.files.length === 1 && !files.length) {
-        void ing1(f);
-      } else {
-        addFiles(e.target.files);
-      }
-    }
-    e.target.value = "";
-  }, [files.length, ing1, addFiles]);
+  /* ── Loading / Auth ──────────────────────────────────── */
+  if (!ready) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-[#09090b]">
+        <div className="flex flex-col items-center gap-4">
+          <SmartToyIcon sx={{ fontSize: 48, color: "#667eea", animation: "pulse 2s ease-in-out infinite" }} />
+          <Typography variant="body2" sx={{ color: "#a1a1aa" }}>Loading...</Typography>
+        </div>
+      </div>
+    );
+  }
 
+  if (!user) {
+    return <AuthScreen onSuccess={() => setReady(true)} />;
+  }
+
+  /* ── Derived values ──────────────────────────────────── */
+  const currentConvTitle = chat.activeConvId
+    ? convListRef.current.find((c) => c.id === chat.activeConvId)?.title || "New Chat"
+    : "New Chat";
+
+  const userInitials =
+    user?.name?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || "?";
+
+  const displayMessages = [
+    ...chat.messages.map((m) => ({
+      role: m.role,
+      content: m.content,
+      sources: m.sources,
+      id: m.id,
+      streaming: false as const,
+      files: m.files,
+    })),
+    ...(chat.isStreaming || chat.streamingContent
+      ? [{
+          role: "assistant" as const,
+          content: chat.streamingContent,
+          sources: chat.streamingSources.length ? chat.streamingSources : undefined,
+          id: undefined,
+          streaming: true as const,
+          files: undefined as undefined,
+        }]
+      : []),
+  ];
+
+  const hasContent = displayMessages.length > 0;
+
+  /* ── Render ──────────────────────────────────────────── */
   return (
-    <Stack direction="row" sx={{ height: "100vh", overflow: "hidden", bgcolor: "var(--color-bg)" }}>
-      {/* Hidden file inputs */}
-      <input ref={fileRef} hidden type="file" accept=".pdf,.txt,.md,.csv,.json" onChange={handleFileUpload} />
+    <ThemeProvider theme={darkTheme}>
+      <CssBaseline />
 
-      {/* ── Sidebar ──────────────────────────────────────── */}
-      <Box
-        sx={{
-          width: DRAWER_W,
-          flexShrink: 0,
-          borderRight: "1px solid var(--color-border)",
-          display: { xs: "none", sm: "flex" },
-          flexDirection: "column",
-          bgcolor: "var(--color-sidebar-bg)",
+      {/* Hidden file input for header upload */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept=".pdf,.txt,.md,.csv,.json"
+        style={{ display: "none" }}
+        onChange={(e) => {
+          if (e.target.files && e.target.files.length > 0) {
+            chat.addFiles(e.target.files);
+            e.target.value = "";
+          }
         }}
-      >
-        {convs.length ? (
-          <Sidebar convs={convs} convId={convId} onNew={newChat} onSelect={pick} onDelete={nuke} />
-        ) : (
-          <SidebarSkeletons />
-        )}
-      </Box>
+      />
 
-      {/* Mobile drawer */}
-      <Drawer open={drawer} onClose={() => setDrawer(false)} PaperProps={{ sx: { width: DRAWER_W, bgcolor: "var(--color-sidebar-bg)" } }}>
-        <Sidebar convs={convs} convId={convId} onNew={newChat} onSelect={pick} onDelete={nuke} />
-      </Drawer>
+      <Stack direction="row" sx={{ height: "100vh", overflow: "hidden", bgcolor: "#09090b" }}>
+        {/* ── Sidebar ─────────────────────────────────── */}
+        <Sidebar
+          convs={chat.conversations}
+          convId={showRename ? null : chat.activeConvId}
+          onNew={handleNewChat}
+          onSelect={handleSelectChat}
+          onDelete={handleDeleteChat}
+          onRename={handleRenameChat}
+          open={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+        />
 
-      {/* ── Main area ────────────────────────────────────── */}
-      <Stack flex={1} sx={{ overflow: "hidden" }}>
-        {/* Header */}
-        <AppBar position="sticky" elevation={0} sx={{ bgcolor: "var(--color-header-bg)", borderBottom: "1px solid var(--color-border)" }}>
-          <Toolbar sx={{ py: 0, minHeight: "44px !important" }}>
+        {/* ── Main area ──────────────────────────────── */}
+        <Box sx={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden" }}>
+          {/* Header */}
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              px: { xs: 1.5, sm: 2 },
+              py: 1,
+              gap: 1.25,
+              borderBottom: "1px solid rgba(255,255,255,.06)",
+              bgcolor: "rgba(9,9,11,.92)",
+              backdropFilter: "blur(12px)",
+              zIndex: 10,
+              flexShrink: 0,
+            }}
+          >
             {/* Hamburger (mobile) */}
             <IconButton
-              edge="start"
-              sx={{ display: { sm: "none" }, mr: 0.5, p: 0.5 }}
-              onClick={() => setDrawer(true)}
-            >
-              <MenuIcon sx={{ fontSize: 17 }} />
-            </IconButton>
-
-            {/* New chat */}
-            <IconButton
               size="small"
-              onClick={newChat}
-              sx={{ display: { sm: "flex" }, mr: 0.5, p: 0.5, color: "text.secondary", "&:hover": { bgcolor: "rgba(128,128,128,.05)" } }}
+              onClick={() => setSidebarOpen(true)}
+              sx={{
+                color: "#71717a",
+                minWidth: 32,
+                mr: { sm: 0 },
+                display: { xs: "flex", sm: "none" },
+              }}
             >
-              <AddIcon sx={{ fontSize: 17 }} />
+              <MenuIcon />
             </IconButton>
 
-            {/* Title */}
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.3, px: 1, py: 0.3, borderRadius: 1.5, bgcolor: "var(--color-chip-bg)" }}>
-              <SmartToyIcon sx={{ fontSize: 14, color: "var(--color-link)" }} />
-              <Typography sx={{ fontWeight: 500, fontSize: "0.78rem", color: "text.primary" }}>RAG Assistant</Typography>
-            </Box>
-
-            <Typography sx={{ mx: 1.5, color: "text.disabled", fontSize: "0.65rem", display: { xs: "none", sm: "block" } }}>
-              &middot;
-            </Typography>
-            <Typography sx={{ fontWeight: 400, fontSize: "0.78rem", color: "text.secondary", display: { xs: "none", sm: "block" } }}>
-              {convId ? convs.find((c) => c.id === convId)?.title || "Chat" : "New Chat"}
-            </Typography>
-
-            <Box flex={1} />
-
-            {/* Upload */}
-            <Tooltip title="Upload">
+            {/* New Chat */}
+            <Tooltip title="New Chat">
               <IconButton
                 size="small"
-                onClick={() => fileRef.current?.click()}
-                disabled={busy}
-                sx={{ color: "text.secondary", p: 0.5, "&:hover": { color: "text.primary" } }}
+                onClick={handleNewChat}
+                sx={{
+                  bgcolor: "rgba(102,126,234,.12)",
+                  color: "#818cf8",
+                  "&:hover": { bgcolor: "rgba(102,126,234,.2)" },
+                  minWidth: 32,
+                }}
               >
-                <UploadFileIcon sx={{ fontSize: 16 }} />
+                <AddIcon fontSize="small" />
               </IconButton>
             </Tooltip>
 
-            {/* User avatar */}
-            <Tooltip title="Account">
-              <IconButton size="small" onClick={(e) => setMenuEl(e.currentTarget)} sx={{ ml: 0.5, p: 0.2 }}>
-                <Avatar
+            {/* Logo + Brand */}
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, flexShrink: 0 }}>
+              <SmartToyIcon sx={{ fontSize: 18, color: "#667eea" }} />
+              <Typography
+                variant="h6"
+                sx={{
+                  fontSize: 14,
+                  fontWeight: 700,
+                  background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  letterSpacing: -0.3,
+                }}
+              >
+                Agentic AI
+              </Typography>
+            </Box>
+
+            {/* Separator */}
+            <Divider orientation="vertical" flexItem sx={{ bgcolor: "rgba(255,255,255,.08)", mx: 0.25 }} />
+
+            {/* Conv title / rename */}
+            <Box sx={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center" }}>
+              {showRename ? (
+                <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flex: 1 }}>
+                  <TextField
+                    size="small"
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleConfirmRename();
+                      if (e.key === "Escape") setShowRename(false);
+                    }}
+                    autoFocus
+                    fullWidth
+                    sx={{ "& .MuiOutlinedInput-root": { fontSize: 13, bgcolor: "rgba(255,255,255,.06)" } }}
+                  />
+                  <Button
+                    size="small"
+                    variant="contained"
+                    onClick={handleConfirmRename}
+                    sx={{ bgcolor: "#667eea", fontSize: 12, px: 1.25, py: 0.5, minWidth: "auto" }}
+                  >
+                    Save
+                  </Button>
+                  <Button
+                    size="small"
+                    onClick={() => setShowRename(false)}
+                    sx={{ fontSize: 12, px: 0.75, py: 0.5, minWidth: "auto" }}
+                  >
+                    Cancel
+                  </Button>
+                </Stack>
+              ) : (
+                <Tooltip title={currentConvTitle} placement="bottom-start">
+                  <Typography
+                    onClick={handleStartRename}
+                    sx={{
+                      fontSize: 13,
+                      color: "#e4e4e7",
+                      fontWeight: 500,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      cursor: "pointer",
+                      px: 1,
+                      py: 0.35,
+                      borderRadius: 1,
+                      transition: "background .15s",
+                      "&:hover": { bgcolor: "rgba(255,255,255,.06)" },
+                    }}
+                  >
+                    {currentConvTitle}
+                  </Typography>
+                </Tooltip>
+              )}
+            </Box>
+
+            {/* Right actions */}
+            <Stack direction="row" spacing={0.25} alignItems="center">
+              {/* File upload */}
+              <Tooltip title="Upload files">
+                <IconButton
+                  size="small"
+                  onClick={handleFileClick}
                   sx={{
-                    width: 24,
-                    height: 24,
-                    bgcolor: "var(--color-avatar-bg)",
-                    fontSize: "0.55rem",
-                    fontWeight: 700,
-                    color: "var(--color-avatar-icon)",
+                    color: "#71717a",
+                    minWidth: 32,
+                    "&:hover": { color: "#667eea", bgcolor: "rgba(102,126,234,.1)" },
                   }}
                 >
-                  {user.name?.charAt(0).toUpperCase() || user.email.charAt(0).toUpperCase()}
+                  <UploadFileIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+
+              {/* Theme toggle */}
+              <Tooltip title={darkMode ? "Light mode" : "Dark mode"}>
+                <IconButton
+                  size="small"
+                  onClick={toggleTheme}
+                  sx={{
+                    color: "#71717a",
+                    minWidth: 32,
+                    "&:hover": {
+                      color: darkMode ? "#fbbf24" : "#818cf8",
+                      bgcolor: darkMode ? "rgba(251,191,36,.1)" : "rgba(99,102,241,.1)",
+                    },
+                  }}
+                >
+                  {darkMode ? <LightModeOutlined fontSize="small" /> : <DarkModeOutlined fontSize="small" />}
+                </IconButton>
+              </Tooltip>
+
+              {/* User avatar */}
+              <IconButton
+                size="small"
+                onClick={(e: React.MouseEvent<HTMLElement>) => setAnchorEl(e.currentTarget)}
+                sx={{ px: 0.5 }}
+              >
+                <Avatar
+                  sx={{
+                    width: 28,
+                    height: 28,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    bgcolor: "rgba(99,102,241,.15)",
+                    color: "#a5b4fc",
+                    border: "1.5px solid rgba(99,102,241,.3)",
+                  }}
+                >
+                  {userInitials}
                 </Avatar>
               </IconButton>
-            </Tooltip>
+            </Stack>
 
             {/* User menu */}
             <Menu
-              anchorEl={menuEl}
-              open={!!menuEl}
-              onClose={() => setMenuEl(null)}
-              anchorOrigin={{ horizontal: "right", vertical: "bottom" }}
-              transformOrigin={{ horizontal: "right", vertical: "top" }}
-              PaperProps={{ sx: { bgcolor: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: 2, p: 0.5 } }}
+              anchorEl={anchorEl}
+              open={Boolean(anchorEl)}
+              onClose={() => setAnchorEl(null)}
+              anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+              transformOrigin={{ vertical: "top", horizontal: "right" }}
+              PaperProps={{ sx: { bgcolor: "#18181b", border: "1px solid rgba(255,255,255,.08)", borderRadius: 2, minWidth: 180, mt: 0.5 } }}
             >
-              <MenuItem disabled sx={{ py: 1, opacity: 1 }}>
-                <Box sx={{ minWidth: 0, pr: 2 }}>
-                  <Typography sx={{ fontWeight: 500, fontSize: "0.8rem", color: "text.primary" }}>
-                    {user.name || "User"}
-                  </Typography>
-                  <Typography sx={{ fontSize: "0.68rem", color: "text.disabled" }}>{user.email}</Typography>
-                </Box>
-              </MenuItem>
-              <Box sx={{ height: 1, bgcolor: "var(--color-border)", mx: 0, my: 0.5 }} />
-              <MenuItem onClick={() => { setMenuEl(null); onLogout(); }} sx={{ color: "#f87171", fontSize: "0.8rem" }}>
+              <Box sx={{ px: 2, py: 1.5 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, fontSize: 14, color: "#e4e4e7" }}>
+                  {user?.name || "User"}
+                </Typography>
+                <Typography variant="caption" sx={{ color: "#71717a", display: "block", mt: 0.25 }}>
+                  {user?.email}
+                </Typography>
+              </Box>
+              <Divider sx={{ bgcolor: "rgba(255,255,255,.08)" }} />
+              <MenuItem onClick={handleLogout} sx={{ justifyContent: "center", color: "#f87171", py: 1.25, fontSize: 14 }}>
                 Sign out
               </MenuItem>
             </Menu>
-          </Toolbar>
-        </AppBar>
+          </Box>
 
-        {/* ── Message area ────────────────────────────────── */}
-        <ScrollContainer>
-          {msgs.length === 0 && !streamT ? (
-            <WelcomeScreen onQuickQuestion={setQuick} />
-          ) : (
-            msgs.map((m, i) =>
-              m.role === "user" ? (
-                <UserMessage key={i} m={m} />
-              ) : (
-                <AssistantMessage
-                  key={i}
-                  content={m.content}
-                  sources={m.sources}
-                  messageId={m.id}
-                />
-              )
-            )
-          )}
-          {/* Streaming assistant message */}
-          {streamT && (
-            <AssistantMessage content={streamT} sources={streamS} isStreaming />
-          )}
-          {/* Typing dots while waiting for first token */}
-          {busy && !streamT && (
-            <AssistantMessage content="" isStreaming />
-          )}
-        </ScrollContainer>
+          {/* Messages area */}
+          <Box sx={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+            {hasContent ? (
+              <ScrollContainer isStreaming={chat.isStreaming}>
+                <div className="w-full max-w-3xl mx-auto px-4 py-6 space-y-4">
+                  {displayMessages.map((msg, i) => (
+                    <MessageBubble
+                      key={msg.id ?? `msg-${i}`}
+                      message={{
+                        role: msg.role,
+                        content: msg.content,
+                        sources: msg.sources,
+                        id: msg.id,
+                        streaming: msg.streaming,
+                        files: msg.files,
+                      }}
+                      onRegenerate={() => { if (!chat.isStreaming) chat.regenerate(); }}
+                      onEditMessage={(index, text) => { if (!chat.isStreaming) chat.editAndResend(index, text); }}
+                      messageIndex={i}
+                    />
+                  ))}
+                </div>
+              </ScrollContainer>
+            ) : (
+              <div className="flex-1 flex items-center justify-center">
+                <WelcomeScreen onQuickQuestion={handleQuickQuestion} />
+              </div>
+            )}
+          </Box>
 
-        {/* ── Input area ──────────────────────────────────── */}
-        <InputArea
-          value={input}
-          onChange={setInput}
-          onSend={send}
-          onStop={stop}
-          files={files}
-          onAddFiles={addFiles}
-          onRemoveFile={rmF}
-          isStreaming={busy}
-          disabled={false}
-        />
+          {/* Input area */}
+          <Box sx={{ flexShrink: 0 }}>
+            <InputArea
+              value={input}
+              onChange={setInput}
+              onSend={handleSend}
+              onStop={handleStop}
+              disabled={false}
+              isStreaming={chat.isStreaming}
+              pendingFiles={chat.pendingFiles}
+              onAddFiles={chat.addFiles}
+              onRemoveFile={chat.removeFile}
+            />
+          </Box>
+        </Box>
       </Stack>
-    </Stack>
+    </ThemeProvider>
   );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Root App                                                           */
-/* ------------------------------------------------------------------ */
-type AUser = { id: string; email: string; name?: string };
-
-export default function App() {
-  const [user, setUser] = useState<AUser | null>(null);
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    (async () => {
-      const t = getAccessToken();
-      if (!t) {
-        setReady(true);
-        return;
-      }
-      try {
-        const r = await fetch(`${API}/v1/auth/me`, {
-          headers: { Authorization: `Bearer ${t}` },
-        });
-        if (!r.ok) throw 0;
-        const d = await r.json();
-        setUser(d.user);
-      } catch {
-        clearTokens();
-      } finally {
-        setReady(true);
-      }
-    })();
-  }, []);
-
-  if (!ready) return <CssBaseline />;
-  if (!user) return <AuthScreen onSuccess={(d) => setUser(d.user as AUser)} />;
-  return <AppCore user={user} onLogout={() => { clearTokens(); setUser(null); }} />;
 }
