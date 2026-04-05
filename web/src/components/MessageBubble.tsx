@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useCallback, useRef, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import { Box, IconButton, Typography, Fade } from "@mui/material";
@@ -33,19 +33,18 @@ function copyToClipboard(text: string): Promise<void> {
   return navigator.clipboard.writeText(text);
 }
 
-function formatFileSize(b: number): string {
-  if (b < 1024) return `${b} B`;
-  if (b < 1048576) return `${(b / 1024).toFixed(1)} KB`;
-  return `${(b / 1048576).toFixed(1)} MB`;
-}
-
-/* ── Typing dots ────────────────────────────────────────────── */
+/* Typing dots */
 function TypingDots() {
   return (
     <div className="flex items-start gap-3 mb-5 animate-[fadeIn_0.3s_ease-out]">
-      <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 bg-[var(--color-avatar-bg)] border border-[var(--color-avatar-border)]">
-        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-[var(--color-avatar-icon)]" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1.27A7 7 0 0 1 14 22h-4a7 7 0 0 1-6.73-3H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2ZM7.5 14a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm9 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z" />
+      <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 bg-[var(--color-avatar-bg)] border border-[var(--color-avatar-border)]">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className="w-4 h-4 text-[var(--color-avatar-icon)]"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+        >
+          <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1.27A7 7 0 0 1 14 22h-4a7 7 0 0 1-6.73-3H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2zM7.5 14a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm9 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z" />
         </svg>
       </div>
       <div className="flex items-center gap-1.5 px-4 py-3 rounded-bl-[16px] rounded-br-[16px] rounded-tr-[4px] rounded-tl-[16px] bg-[var(--color-typing-bg)] border border-[var(--color-typing-border)]">
@@ -61,7 +60,7 @@ function TypingDots() {
   );
 }
 
-/* ── Actions bar ────────────────────────────────────────────── */
+/* Actions bar */
 function ActionsBar({
   content,
   messageId,
@@ -75,7 +74,6 @@ function ActionsBar({
 }) {
   const [copied, setCopied] = useState(false);
   const [feedback, setFeedback] = useState<0 | 1 | null>(null);
-  const [hovering, setHovering] = useState(false);
 
   const handleCopy = useCallback(async () => {
     await copyToClipboard(content);
@@ -86,9 +84,7 @@ function ActionsBar({
   const handleFeedback = useCallback(
     async (score: 0 | 1) => {
       setFeedback(score);
-      if (messageId) {
-        await apiSubmitFeedback(messageId, score);
-      }
+      if (messageId) await apiSubmitFeedback(messageId, score);
     },
     [messageId]
   );
@@ -98,12 +94,10 @@ function ActionsBar({
       className={`flex items-center gap-1 mt-2 transition-opacity duration-150 ${
         isLast ? "opacity-100" : "opacity-0"
       } group-hover/msg:opacity-100`}
-      onMouseEnter={() => setHovering(true)}
-      onMouseLeave={() => setHovering(false)}
     >
       <button
         onClick={handleCopy}
-        className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+        className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-zinc-500 hover:text-zinc-300 transition-colors hover:bg-zinc-800"
       >
         {copied ? (
           <CheckIcon className="text-green-400" sx={{ fontSize: 13 }} />
@@ -116,7 +110,7 @@ function ActionsBar({
       {onRegenerate && (
         <button
           onClick={onRegenerate}
-          className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+          className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-zinc-500 hover:text-zinc-300 transition-colors hover:bg-zinc-800"
         >
           <AutorenewOutlined sx={{ fontSize: 13 }} />
           <span className="text-[0.6rem]">Retry</span>
@@ -128,7 +122,9 @@ function ActionsBar({
       <button
         onClick={() => handleFeedback(1)}
         className={`p-1 rounded transition-colors ${
-          feedback === 1 ? "text-green-400" : "text-zinc-500 hover:text-green-400"
+          feedback === 1
+            ? "text-green-400"
+            : "text-zinc-500 hover:text-green-400"
         }`}
       >
         <ThumbUpOutlined sx={{ fontSize: 14 }} />
@@ -136,7 +132,9 @@ function ActionsBar({
       <button
         onClick={() => handleFeedback(0)}
         className={`p-1 rounded transition-colors ${
-          feedback === 0 ? "text-red-400" : "text-zinc-500 hover:text-red-400"
+          feedback === 0
+            ? "text-red-400"
+            : "text-zinc-500 hover:text-red-400"
         }`}
       >
         <ThumbDownOutlined sx={{ fontSize: 14 }} />
@@ -145,8 +143,12 @@ function ActionsBar({
   );
 }
 
-/* ── Citations ──────────────────────────────────────────────── */
-function Citations({ sources }: { sources?: Array<{ source: string; idx: number; number: number }> }) {
+/* Citations */
+function Citations({
+  sources,
+}: {
+  sources?: Array<{ source: string; idx: number; number: number }>;
+}) {
   if (!sources?.length) return null;
   return (
     <div className="flex flex-wrap gap-1.5 mt-3">
@@ -155,7 +157,10 @@ function Citations({ sources }: { sources?: Array<{ source: string; idx: number;
           key={i}
           className="px-2 py-0.5 rounded text-[0.62rem] font-semibold cursor-default bg-[var(--color-citation-bg)] text-[var(--color-link)] border border-[var(--color-citation-border)] hover:bg-[var(--color-citation-hover-bg)] transition-colors"
           title={s.source}
-          style={{ animation: "chipIn 0.25s ease-out both", animationDelay: `${i * 0.05}s` }}
+          style={{
+            animation: "chipIn 0.25s ease-out both",
+            animationDelay: `${i * 0.05}s`,
+          }}
         >
           [{s.number}] {s.source}
         </div>
@@ -164,18 +169,35 @@ function Citations({ sources }: { sources?: Array<{ source: string; idx: number;
   );
 }
 
-/* ── Main component ─────────────────────────────────────────── */
-export function MessageBubble({ message, isLastMessage, isStreaming, messageIndex, onRegenerate, onEditMessage }: MessageBubbleProps) {
+/* Main component */
+export function MessageBubble({
+  message,
+  isLastMessage,
+  isStreaming,
+  messageIndex,
+  onRegenerate,
+  onEditMessage,
+}: MessageBubbleProps) {
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(message.content);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Focus textarea when editing
+  useEffect(() => {
+    if (editing && textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, [editing]);
+
   if (message.role === "user") {
     return (
       <div className="group/user relative flex justify-end mb-5 animate-[fadeInUp_0.2s_ease-out]">
-        <div className="max-w-[70%] min-w-0">
+        <div className="min-w-0">
           {message.files?.map((f, i) => (
-            <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg mr-1 mb-1.5 bg-[var(--color-chip-bg)] border border-[var(--color-chip-border)] text-[0.62rem] font-medium text-zinc-400">
+            <span
+              key={i}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg mr-1 mb-1.5 bg-[var(--color-chip-bg)] border border-[var(--color-chip-border)] text-[0.62rem] font-medium text-zinc-400"
+            >
               {f}
             </span>
           ))}
@@ -204,7 +226,10 @@ export function MessageBubble({ message, isLastMessage, isStreaming, messageInde
               />
               <div className="flex gap-2 justify-end mt-2">
                 <button
-                  onClick={() => { setEditing(false); setEditText(message.content); }}
+                  onClick={() => {
+                    setEditing(false);
+                    setEditText(message.content);
+                  }}
                   className="px-3 py-1 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
                 >
                   Cancel
@@ -224,7 +249,7 @@ export function MessageBubble({ message, isLastMessage, isStreaming, messageInde
               </div>
             </div>
           ) : (
-            <div className="px-4 py-2.5 rounded-[18px] bg-gradient-to-br from-[#6366f1]/80 to-[#7c3aed]/80 text-white whitespace-pre-wrap break-words leading-relaxed text-[0.9rem] shadow-[0_1px_4px_rgba(99,102,241,.15)]">
+            <div className="px-4 py-2.5 rounded-[18px] bg-gradient-to-br from-[#6366f1]/80 to-[#7c3aed]/80 text-white whitespace-pre-wrap leading-relaxed text-[0.9rem] shadow-[0_1px_4px_rgba(99,102,241,.15)]" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
               {message.content}
             </div>
           )}
@@ -250,29 +275,45 @@ export function MessageBubble({ message, isLastMessage, isStreaming, messageInde
   }
 
   return (
-    <div className="group/msg flex justify-start mb-5 animate-[slideUp_0.2s_ease-out]">
-      <div className="flex gap-3 max-w-[85%] min-w-0 w-full">
-        <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 bg-[var(--color-avatar-bg)] border border-[var(--color-avatar-border)]">
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-[var(--color-avatar-icon)]" viewBox="0 0 24 24" fill="currentColor">
+    <div className="group/msg flex justify-start mb-8 animate-[slideUp_0.3s_ease-out]">
+      <div className="flex gap-4 max-w-[80%] min-w-0 w-full">
+        {/* Avatar */}
+        <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1 bg-[var(--color-avatar-bg)] border border-[var(--color-avatar-border)]">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className="w-4 h-4 text-[var(--color-avatar-icon)]"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+          >
             <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1.27A7 7 0 0 1 14 22h-4a7 7 0 0 1-6.73-3H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2ZM7.5 14a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm9 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z" />
           </svg>
         </div>
+
         <div className="min-w-0 flex-1">
-          <div className="leading-relaxed text-[0.9rem] text-[var(--color-text-primary)] prose-sm">
-            <div className="prose [&>h1]:text-[1.25rem] [&>h2]:text-[1.1rem] [&>h3]:text-[1rem] [&>h4]:text-[0.95rem] [&>h5]:text-[0.9rem] [&>h6]:text-[0.88rem] [&>h1,h2,h3,h4,h5,h6]:font-semibold [&>h1,h2,h3,h4,h5,h6]:mt-4 [&>h1,h2,h3,h4,h5,h6]:mb-1 [&>p]:my-1 [&>ul,>ol]:my-1 [&>li]:my-0.5 [&>hr]:border-[var(--color-border)] [&>hr]:my-3 [&>pre]:bg-[var(--color-code-bg)] [&>pre]:border [&>pre]:border-[var(--color-code-border)] [&>pre]:rounded-xl [&>pre]:overflow-hidden [&>pre]:mt-2 [&>pre]:mb-2 [&>code]:bg-[var(--color-inline-code-bg)] [&>code]:text-[var(--color-inline-code-text)] [&>code]:px-1.5 [&>code]:py-0.5 [&>code]:rounded-md [&>code]:text-[0.84rem] [&>code]:font-mono [&>a]:text-[var(--color-link)] [&>a]:no-underline hover:[&>a]:underline [&>table]:border-collapse [&>table]:my-2 [&>table]:border [&>table]:border-[var(--color-border)] [&>table]:rounded-lg [&>th]:border [&>th]:border-[var(--color-border)] [&>th]:px-3 [&>th]:py-2 [&>th]:font-medium [&>td]:border [&>td]:border-[var(--color-border)] [&>td]:px-3 [&>td]:py-2 [&>blockquote]:border-l-2 [&>blockquote]:border-[var(--color-link)] [&>blockquote]:pl-4 [&>blockquote]:my-2 [&>blockquote]:text-zinc-400">
-              <ReactMarkdown components={mdComponents} rehypePlugins={[rehypeHighlight]}>
+          {/* Message prose */}
+          <div className="leading-relaxed text-[0.95rem] text-[var(--color-text-primary)] prose-sm max-w-prose">
+            <div className="prose [&>h1]:text-[1.5rem] [&>h2]:text-[1.25rem] [&>h3]:text-[1.1rem] [&>h4]:text-[1rem] [&>h5]:text-[0.95rem] [&>h6]:text-[0.9rem] [&>h1,h2,h3,h4,h5,h6]:font-semibold [&>h1,h2,h3,h4,h5,h6]:mt-6 [&>h1,h2,h3,h4,h5,h6]:mb-2 [&>p]:my-2 [&>ul,>ol]:my-2 [&>li]:my-0.5 [&>hr]:border-[var(--color-border)] [&>hr]:my-4 [&>pre]:bg-[var(--color-code-bg)] [&>pre]:border [&>pre]:border-[var(--color-code-border)] [&>pre]:rounded-xl [&>pre]:overflow-hidden [&>pre]:mt-2 [&>pre]:mb-2 [&>code]:bg-[var(--color-inline-code-bg)] [&>code]:text-[var(--color-inline-code-text)] [&>code]:px-1.5 [&>code]:py-0.5 [&>code]:rounded-md [&>code]:text-[0.84rem] [&>code]:font-mono [&>a]:text-[var(--color-link)] [&>a]:no-underline hover:[&>a]:underline [&>table]:border-collapse [&>table]:my-2 [&>table]:border [&>table]:border-[var(--color-border)] [&>table]:rounded-lg [&>th]:border [&>th]:border-[var(--color-border)] [&>th]:px-3 [&>th]:py-2 [&>th]:font-medium [&>td]:border [&>td]:border-[var(--color-border)] [&>td]:px-3 [&>td]:py-2 [&>blockquote]:border-l-2 [&>blockquote]:border-[var(--color-link)] [&>blockquote]:pl-4 [&>blockquote]:my-2 [&>blockquote]:text-zinc-400">
+              <ReactMarkdown
+                components={mdComponents}
+                rehypePlugins={[rehypeHighlight]}
+              >
                 {message.content}
               </ReactMarkdown>
               {isStreaming && (
-                <span
-                  className="inline-block w-[2px] h-[1em] bg-[var(--color-link)] ml-1 align-text-bottom animate-[blink_0.8s_infinite]"
-                />
+                <span className="inline-block w-[2px] h-[1.5em] bg-[var(--color-link)] ml-2 align-text-bottom animate-[blink_1s_infinite]" />
               )}
             </div>
           </div>
 
           <Citations sources={message.sources} />
-          {!isStreaming && <ActionsBar content={message.content} messageId={message.id} onRegenerate={isLastMessage ? onRegenerate : undefined} isLast={isLastMessage} />}
+          {!isStreaming && (
+            <ActionsBar
+              content={message.content}
+              messageId={message.id}
+              onRegenerate={isLastMessage ? onRegenerate : undefined}
+              isLast={isLastMessage}
+            />
+          )}
         </div>
       </div>
     </div>

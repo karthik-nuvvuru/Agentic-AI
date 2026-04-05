@@ -1,9 +1,8 @@
-import { Box, Button, Paper, Stack, Typography, Avatar as MuiAvatar } from "@mui/material";
+import { Box, Stack, Typography, Paper } from "@mui/material";
 import {
-  UploadFile as UploadFileIcon,
-  AutoAwesome as SparklesIcon,
+  UploadFile as UploadIcon,
+  Search as SearchIcon,
   Chat as ChatIcon,
-  AutoFixHigh as MagicIcon,
 } from "@mui/icons-material";
 
 interface WelcomeScreenProps {
@@ -11,108 +10,209 @@ interface WelcomeScreenProps {
 }
 
 const quickQuestions = [
-  "Explain how quantum computing works in simple terms",
-  "What are the best practices for API design?",
-  "Compare REST vs GraphQL vs gRPC",
-  "Help me understand machine learning basics",
+  { label: "Summarize the key points from the uploaded document", icon: "\u{1F4C4}" },
+  { label: "What are the main topics covered in my files?", icon: "\u{1F50D}" },
+  { label: "Compare and contrast the findings", icon: "\u2696\u{FE0F}" },
+  { label: "What conclusions can be drawn?", icon: "\u{1F4A1}" },
+];
+
+const features = [
+  { icon: UploadIcon, label: "Upload documents", desc: "PDF, TXT, MD, CSV" },
+  { icon: SearchIcon, label: "Smart search", desc: "Vector + keyword RAG" },
+  { icon: ChatIcon, label: "Follow-ups", desc: "Stay in context" },
 ];
 
 export function WelcomeScreen({ onQuickQuestion }: WelcomeScreenProps) {
   return (
-    <Box className="flex flex-col items-center justify-center min-h-[70vh] py-8 animate-[fadeInUp_0.4s_ease-out]">
-      {/* Title area */}
-      <div className="flex items-center justify-center w-16 h-16 mb-5 rounded-2xl bg-gradient-to-br from-[#667eea] to-[#7c3aed] shadow-[0_8px_32px_rgba(102,126,234,.35)]">
-        <SparklesIcon sx={{ fontSize: 32, color: "#fff" }} />
-      </div>
-
-      <Typography
-        variant="h4"
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        minHeight: "70vh",
+        py: 5,
+        px: 2,
+        animation: "fadeInUp 0.4s ease-out",
+      }}
+    >
+      {/* Icon */}
+      <Box
         sx={{
-          fontWeight: 700, mb: 1.5,
-          background: "linear-gradient(135deg, #667eea 0%, #a78bfa 100%)",
-          WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+          width: 56,
+          height: 56,
+          borderRadius: 3,
+          mb: 3,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+          boxShadow: "0 4px 24px rgba(99,102,241,.35)",
+          animation: "glow 8s ease-in-out infinite",
         }}
       >
-        How can I help you today?
+        <svg
+          width="28"
+          height="28"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="white"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1.27A7 7 0 0 1 14 22h-4a7 7 0 0 1-6.73-3H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z" />
+          <circle cx="7.5" cy="14" r="1.5" />
+          <circle cx="16.5" cy="14" r="1.5" />
+        </svg>
+      </Box>
+
+      {/* Title */}
+      <Typography
+        sx={{
+          fontWeight: 800,
+          fontSize: { xs: 28, sm: 36 },
+          mb: 1.5,
+          textAlign: "center",
+          color: "#e4e4e7",
+          letterSpacing: "-.03em",
+        }}
+      >
+        Ask me anything
       </Typography>
 
-      <Typography variant="body1" color="text.secondary" className="text-center max-w-xl mb-8 leading-relaxed">
-        I'm your AI assistant with access to your documents. Upload files, ask questions, and get intelligent answers with source citations.
+      {/* Subtitle — ChatGPT style */}
+      <Typography
+        sx={{
+          color: "#71717a",
+          fontSize: 15,
+          textAlign: "center",
+          maxWidth: 480,
+          mb: 4,
+          lineHeight: 1.6,
+        }}
+      >
+        Upload your documents and ask questions. Get intelligent, source-attributed answers powered by RAG.
       </Typography>
 
       {/* Feature grid */}
-      <Box className="flex gap-3 max-w-xl mb-8">
-        {[
-          { icon: UploadFileIcon, label: "Upload docs", desc: "PDF, TXT, MD, CSV, JSON" },
-          { icon: MagicIcon, label: "Smart retrieval", desc: "Hybrid vector + keyword search" },
-          { icon: ChatIcon, label: "Follow-ups", desc: "Ask naturally, stay in context" },
-        ].map((f, i) => (
-          <Box key={i} className="flex-1">
-            <Paper
-              elevation={0}
-              className="text-center p-4 rounded-xl border transition-all duration-200 cursor-default hover:translate-y-[-2px]"
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        spacing={2}
+        sx={{ width: "100%", maxWidth: 600, mb: 5 }}
+      >
+        {features.map((f) => (
+          <Paper
+            key={f.label}
+            elevation={0}
+            sx={{
+              flex: 1,
+              p: 3,
+              textAlign: "center",
+              borderRadius: 3,
+              bgcolor: "rgba(255,255,255,.04)",
+              border: "1px solid rgba(255,255,255,.08)",
+              transition: "all .2s",
+              cursor: "default",
+              "&:hover": {
+                bgcolor: "rgba(255,255,255,.06)",
+                transform: "translateY(-2px)",
+                borderColor: "rgba(99,102,241,.2)",
+              },
+            }}
+          >
+            <Box
               sx={{
-                bgcolor: "action.hover",
-                borderColor: "divider",
-                "&:hover": { boxShadow: "0 4px 16px rgba(0,0,0,.15)" },
+                width: 36,
+                height: 36,
+                mx: "auto",
+                mb: 1.5,
+                borderRadius: 2,
+                bgcolor: "rgba(99,102,241,.12)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
-              <MuiAvatar
-                className="mx-auto mb-2"
-                sx={{
-                  width: 36, height: 36,
-                  bgcolor: "rgba(102,126,234,.1)", color: "#818cf8",
-                }}
-              >
-                <f.icon sx={{ fontSize: 17 }} />
-              </MuiAvatar>
-              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.25, fontSize: "0.82rem", letterSpacing: "-0.01em" }}>
-                {f.label}
-              </Typography>
-              <Typography variant="caption" color="text.disabled" sx={{ fontSize: "0.68rem" }}>
-                {f.desc}
-              </Typography>
-            </Paper>
-          </Box>
+              <f.icon sx={{ fontSize: 18, color: "#818cf8" }} />
+            </Box>
+            <Typography
+              variant="body2"
+              sx={{ fontWeight: 600, mb: 0.5, fontSize: 13, color: "#d4d4d8" }}
+            >
+              {f.label}
+            </Typography>
+            <Typography variant="body2" sx={{ fontSize: 12, color: "#71717a" }}>
+              {f.desc}
+            </Typography>
+          </Paper>
         ))}
-      </Box>
+      </Stack>
 
       {/* Quick questions */}
-      <Box sx={{ width: "100%", maxWidth: 520 }}>
-        <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2, fontWeight: 500, fontSize: "0.82rem" }}>
-          Try asking
-        </Typography>
+      <Typography
+        sx={{
+          color: "#71717a",
+          mb: 2,
+          fontWeight: 500,
+          fontSize: 13,
+          letterSpacing: ".02em",
+        }}
+      >
+        Try asking
+      </Typography>
 
-        <Stack direction="column" spacing={1.5}>
-          {quickQuestions.map((q, i) => (
-            <Button
-              key={q}
-              variant="outlined"
-              fullWidth
-              onClick={() => onQuickQuestion(q)}
+      <Stack direction="column" spacing={1.5} sx={{ width: "100%", maxWidth: 520 }}>
+        {quickQuestions.map((q) => (
+          <Box
+            key={q.label}
+            onClick={() => onQuickQuestion(q.label)}
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 1.5,
+              px: 3,
+              py: 1.5,
+              borderRadius: 3,
+              cursor: "pointer",
+              border: "1px solid rgba(255,255,255,.08)",
+              bgcolor: "rgba(255,255,255,.02)",
+              transition: "all .15s",
+              "&:hover": {
+                bgcolor: "rgba(99,102,241,.06)",
+                borderColor: "rgba(99,102,241,.3)",
+                transform: "translateY(-1px)",
+                boxShadow: "0 2px 8px rgba(99,102,241,.08)",
+              },
+              "&:active": { transform: "scale(0.99)" },
+            }}
+          >
+            <Box
               sx={{
-                justifyContent: "flex-start", py: 1.5, px: 2.5, borderRadius: 2,
-                textAlign: "left", textTransform: "none", color: "text.primary",
-                borderColor: "var(--color-border)",
-                bgcolor: "rgba(255,255,255,.02)",
-                fontSize: "0.86rem",
-                transition: "all 0.15s",
-                "& .MuiButton-startIcon": { display: "flex", alignItems: "center" },
-                "&:hover": {
-                  bgcolor: "rgba(102,126,234,.06)", borderColor: "rgba(102,126,234,.3)",
-                },
+                fontSize: 16,
+                flexShrink: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
-              <span className="w-5 h-5 rounded-full bg-[var(--color-chip-bg)] border border-[var(--color-chip-border)] flex items-center justify-center text-[0.6rem] font-bold text-[var(--color-text-secondary)] flex-shrink-0 mr-2.5">
-                {i + 1}
-              </span>
-              <Typography variant="body2" sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {q}
-              </Typography>
-            </Button>
-          ))}
-        </Stack>
-      </Box>
+              {q.icon}
+            </Box>
+            <Typography
+              sx={{
+                color: "#d4d4d8",
+                fontSize: 14,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                lineHeight: 1.4,
+              }}
+            >
+              {q.label}
+            </Typography>
+          </Box>
+        ))}
+      </Stack>
     </Box>
   );
 }

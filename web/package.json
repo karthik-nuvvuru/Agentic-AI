@@ -7,7 +7,19 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "playwright test",
+    "test:ui": "playwright test ui.spec.ts",
+    "test:ux": "playwright test ux.spec.ts",
+    "test:chat": "playwright test chat.spec.ts",
+    "test:sidebar": "playwright test sidebar.spec.ts",
+    "test:input": "playwright test input.spec.ts",
+    "test:visual": "playwright test visual.spec.ts",
+    "test:performance": "playwright test performance.spec.ts",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "test:report": "playwright show-report",
+    "test:video": "playwright test --video=on"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -21,6 +33,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@playwright/test": "^1.59.1",
     "@tailwindcss/vite": "^4.2.2",
     "@types/node": "^24.12.0",
     "@types/react": "^19.2.14",

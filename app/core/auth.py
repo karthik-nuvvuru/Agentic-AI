@@ -41,7 +41,7 @@ def verify_password(raw: str, hashed: str) -> bool:
 
 
 # ── Access token (15 min, no refresh capability) ──────────────────
-def create_access_token(subject: str | uuid.UUID, extra: dict | None = None) -> str:
+def create_access_token(subject: str | uuid.UUID, email: str | None = None, name: str | None = None) -> str:
     expire = datetime.now(timezone.utc) + _ACCESS_TTL
     payload: dict[str, object] = {
         "sub": str(subject),
@@ -49,8 +49,10 @@ def create_access_token(subject: str | uuid.UUID, extra: dict | None = None) -> 
         "iat": datetime.now(timezone.utc),
         "type": "access",
     }
-    if extra:
-        payload.update(extra)
+    if email:
+        payload["email"] = email
+    if name:
+        payload["name"] = name
     return jwt.encode(payload, _secret(), algorithm="HS256")
 
 

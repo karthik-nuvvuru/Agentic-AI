@@ -127,7 +127,7 @@ async def register(
     await session.commit()
     await session.refresh(user)
 
-    access = create_access_token(user.id)
+    access = create_access_token(user.id, email=user.email, name=user.name)
     refresh_str, _ = create_refresh_token(user.id)
 
     _set_refresh_cookie(response, refresh_str)
@@ -148,7 +148,7 @@ async def login(
     if not user or not verify_password(req.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    access = create_access_token(user.id)
+    access = create_access_token(user.id, email=user.email, name=user.name)
     refresh_str, _ = create_refresh_token(user.id)
 
     _set_refresh_cookie(response, refresh_str)
@@ -197,7 +197,7 @@ async def refresh_token(
         await blacklist_refresh_token(jti, ttl_seconds=604800)
 
     # Issue new pair
-    access = create_access_token(user.id)
+    access = create_access_token(user.id, email=user.email, name=user.name)
     new_refresh, _ = create_refresh_token(user.id)
     _set_refresh_cookie(response, new_refresh)
 
@@ -270,7 +270,7 @@ async def _upsert_and_respond(
         await session.commit()
         await session.refresh(user)
 
-    access = create_access_token(user.id)
+    access = create_access_token(user.id, email=user.email, name=user.name)
     refresh_str, _ = create_refresh_token(user.id)
     _set_refresh_cookie(response, refresh_str)
 

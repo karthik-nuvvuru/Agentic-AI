@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef } from "react";
-import { Box, useTheme } from "@mui/material";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Box, IconButton } from "@mui/material";
 import { styled } from "@mui/material/styles";
+import { KeyboardArrowDown as KeyboardArrowDownIcon } from "@mui/icons-material";
 
 const ScrollBox = styled(Box)(({ theme }) => ({
   overflowY: "auto",
@@ -17,11 +18,26 @@ const ScrollBox = styled(Box)(({ theme }) => ({
 
 export function ScrollContainer({ children }: { children: React.ReactNode; isStreaming?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
+  const [showScrollButton, setShowScrollButton] = useState(false);
+
+  const handleScroll = useCallback(() => {
+    if (ref.current) {
+      const { scrollHeight, clientHeight, scrollTop } = ref.current;
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+      setShowScrollButton(distanceFromBottom > 200);
+    }
+  }, []);
 
   const scrollToBottom = useCallback(() => {
     if (ref.current) {
+      ref.current.scrollTo({ top: ref.current.scrollHeight, behavior: "smooth" });
+    }
+  }, []);
+
+  // Smart scroll: only auto-scroll if user is near bottom
+  const smartScroll = useCallback(() => {
+    if (ref.current) {
       const { scrollHeight, clientHeight, scrollTop } = ref.current;
-      // Only auto-scroll if user is near bottom (avoids jumping when user scrolls up)
       if (scrollHeight - scrollTop - clientHeight < 200) {
         ref.current.scrollTo({ top: scrollHeight, behavior: "smooth" });
       }
@@ -32,10 +48,40 @@ export function ScrollContainer({ children }: { children: React.ReactNode; isStr
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const observer = new MutationObserver(scrollToBottom);
+    const observer = new MutationObserver(smartScroll);
     observer.observe(el, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [scrollToBottom]);
+  }, [smartScroll]);
 
-  return <ScrollBox ref={ref}>{children}</ScrollBox>;
+  return (
+    <Box sx={{ position: "relative", height: "100%", flex: 1 }}>
+      <ScrollBox ref={ref} onScroll={handleScroll}>
+        {children}
+      </ScrollBox>
+
+      {/* Scroll-to-bottom button — ChatGPT style */}
+      {showScrollButton && (
+        <IconButton
+          onClick={scrollToBottom}
+          aria-label="Scroll to bottom"
+          sx={{
+            position: "absolute",
+            bottom: 12,
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: 32,
+            height: 32,
+            borderRadius: "50%",
+            bgcolor: "#27272a",
+            border: "1px solid #3f3f46",
+            boxShadow: "0 2px 8px rgba(0,0,0,.3)",
+            color: "#a1a1aa",
+            "&:hover": { bgcolor: "#3f3f46" },
+          }}
+        >
+          <KeyboardArrowDownIcon sx={{ fontSize: 18 }} />
+        </IconButton>
+      )}
+    </Box>
+  );
 }

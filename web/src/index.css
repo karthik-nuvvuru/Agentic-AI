@@ -1,83 +1,26 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
-@theme {
-  /* Design tokens */
-  --color-bg: #09090b;
-  --color-bg-elevated: #18181b;
-  --color-surface: rgba(255,255,255,.05);
-  --color-surface-hover: rgba(255,255,255,.08);
-  --color-sidebar-bg: #0a0a0e;
-  --color-text-primary: #e4e4e7;
-  --color-text-secondary: #a1a1aa;
-  --color-text-disabled: rgba(255,255,255,.25);
-  --color-border: rgba(255,255,255,.1);
-  --color-link: #818cf8;
-  --color-citation-bg: rgba(99,102,241,.08);
-  --color-citation-hover-bg: rgba(99,102,241,.15);
-  --color-citation-border: rgba(99,102,241,.2);
-  --color-chip-bg: rgba(255,255,255,.06);
-  --color-chip-border: rgba(255,255,255,.08);
-  --color-input-bg: rgba(255,255,255,.04);
-  --color-input-border: rgba(255,255,255,.08);
-  --color-input-focus-border: rgba(99,102,241,.4);
-  --color-input-focus-shadow: 0 0 0 2px rgba(99,102,241,.1);
-  --color-icon: rgba(255,255,255,.35);
-  --color-icon-hover: rgba(255,255,255,.08);
-  --color-avatar-bg: rgba(99,102,241,.12);
-  --color-avatar-border: #818cf8;
-  --color-avatar-icon: #a5b4fc;
-  --color-typing-bg: rgba(255,255,255,.03);
-  --color-typing-border: rgba(255,255,255,.06);
-  --color-typing-dot: #6366f1;
-  --color-active-bg: rgba(99,102,241,.12);
-  --color-active-text: #c4b5fd;
-  --color-hover-bg: rgba(255,255,255,.06);
-  --color-header-bg: #09090b;
-  --color-drag-overlay: rgba(99,102,241,.08);
-  --color-skeleton-bg: rgba(128,128,128,.08);
-  --color-code-bg: #0a0a0e;
-  --color-code-text: #e4e4e7;
-  --color-code-header: rgba(255,255,255,.06);
-  --color-code-border: rgba(255,255,255,.1);
-  --color-btn-bg: rgba(255,255,255,.08);
-  --color-btn-bg-hover: rgba(255,255,255,.12);
-  --color-btn-border: rgba(255,255,255,.1);
-  --color-btn-border-hover: rgba(255,255,255,.15);
-  --color-search-bg: rgba(255,255,255,.04);
-  --color-border-focus: #818cf8;
-  --color-placeholder: rgba(255,255,255,.22);
-}
-
-/* Light mode tokens */
-:root {
-  /* These will be toggled via class on html element */
-}
-
-.dark {
-  color-scheme: dark;
-}
-
-.light {
-  color-scheme: light;
-}
-
 /* Reset and base styles */
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body, #root { height: 100%; }
+
+html { height: 100%; }
 
 body {
+  height: 100%;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
-  background: var(--color-bg);
-  color: var(--color-text-primary);
-  transition: background 0.3s, color 0.3s;
+  background: #09090b;
+  color: #e4e4e7;
 }
 
-#root { background: var(--color-bg); transition: background 0.3s; }
+#root {
+  height: 100%;
+  background: #09090b;
+}
 
 /* Code blocks */
 pre code.hljs { background: transparent !important; padding: 0 !important; }
@@ -102,6 +45,78 @@ pre code.hljs { background: transparent !important; padding: 0 !important; }
 
 ::selection { background: rgba(99,102,241,.3); }
 
+/* CSS Variables for consistent theming */
+:root {
+  --color-text-primary: #e4e4e7;
+  --color-text-secondary: #a1a1aa;
+  --color-border: rgba(255,255,255,.08);
+  --color-chip-bg: rgba(255,255,255,.06);
+  --color-chip-border: rgba(255,255,255,.1);
+  --color-link: #818cf8;
+  --color-link-hover: #a5b4fc;
+  --color-code-bg: rgba(0,0,0,.2);
+  --color-code-border: rgba(255,255,255,.1);
+  --color-inline-code-bg: rgba(255,255,255,.08);
+  --color-inline-code-text: #e4e4e7;
+  --color-citation-bg: rgba(99,102,241,.1);
+  --color-citation-border: rgba(99,102,241,.2);
+  --color-citation-hover-bg: rgba(99,102,241,.15);
+  --color-avatar-bg: rgba(99,102,241,.12);
+  --color-avatar-border: rgba(99,102,241,.25);
+  --color-avatar-icon: #a5b4fc;
+  --color-typing-bg: rgba(99,102,241,.08);
+  --color-typing-border: rgba(99,102,241,.15);
+  --color-typing-dot: #818cf8;
+}
+
+/* Dark mode overrides */
+.dark {
+  --color-text-primary: #e4e4e7;
+  --color-text-secondary: #a1a1aa;
+  --color-border: rgba(255,255,255,.08);
+  --color-chip-bg: rgba(255,255,255,.06);
+  --color-chip-border: rgba(255,255,255,.1);
+  --color-link: #818cf8;
+  --color-link-hover: #a5b4fc;
+  --color-code-bg: rgba(0,0,0,.2);
+  --color-code-border: rgba(255,255,255,.1);
+  --color-inline-code-bg: rgba(255,255,255,.08);
+  --color-inline-code-text: #e4e4e7;
+  --color-citation-bg: rgba(99,102,241,.1);
+  --color-citation-border: rgba(99,102,241,.2);
+  --color-citation-hover-bg: rgba(99,102,241,.15);
+  --color-avatar-bg: rgba(99,102,241,.12);
+  --color-avatar-border: rgba(99,102,241,.25);
+  --color-avatar-icon: #a5b4fc;
+  --color-typing-bg: rgba(99,102,241,.08);
+  --color-typing-border: rgba(99,102,241,.15);
+  --color-typing-dot: #818cf8;
+}
+
+/* Light mode overrides */
+.light {
+  --color-text-primary: #18181b;
+  --color-text-secondary: #52525b;
+  --color-border: rgba(0,0,0,.08);
+  --color-chip-bg: rgba(0,0,0,.04);
+  --color-chip-border: rgba(0,0,0,.08);
+  --color-link: #6366f1;
+  --color-link-hover: #4f46e5;
+  --color-code-bg: rgba(0,0,0,.05);
+  --color-code-border: rgba(0,0,0,.1);
+  --color-inline-code-bg: rgba(0,0,0,.04);
+  --color-inline-code-text: #18181b;
+  --color-citation-bg: rgba(99,102,241,.1);
+  --color-citation-border: rgba(99,102,241,.2);
+  --color-citation-hover-bg: rgba(99,102,241,.15);
+  --color-avatar-bg: rgba(99,102,241,.12);
+  --color-avatar-border: rgba(99,102,241,.25);
+  --color-avatar-icon: #a5b4fc;
+  --color-typing-bg: rgba(99,102,241,.08);
+  --color-typing-border: rgba(99,102,241,.15);
+  --color-typing-dot: #818cf8;
+}
+
 /* Touch-friendly tap targets */
 @media (max-width: 600px) {
   button, [role="button"], .MuiIconButton-root {
@@ -109,3 +124,9 @@ pre code.hljs { background: transparent !important; padding: 0 !important; }
     min-height: 44px !important;
   }
 }
+
+/* Prose max width */
+.max-w-prose {
+  max-width: 65ch;
+}
+/* cache-bust: 2026-04-05 */

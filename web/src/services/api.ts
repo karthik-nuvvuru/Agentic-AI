@@ -1,7 +1,7 @@
 export const API = import.meta.env.VITE_API_BASE || "";
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = sessionStorage.getItem("auth_access_token");
+  const token = localStorage.getItem("auth_access_token") || sessionStorage.getItem("auth_access_token");
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...options.headers as Record<string, string>,
@@ -41,7 +41,7 @@ export async function apiMe(): Promise<{ user: UserInfo }> {
 export async function apiLogout(): Promise<void> {
   await fetch(`${API}/v1/auth/logout`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${sessionStorage.getItem("auth_access_token") || ""}` },
+    headers: { Authorization: `Bearer ${localStorage.getItem("auth_access_token") || sessionStorage.getItem("auth_access_token") || ""}` },
     credentials: "include",
   }).catch(() => {});
 }
@@ -83,7 +83,7 @@ export async function apiUpdateConversationTitle(id: string, title: string): Pro
 export async function apiDeleteConversation(id: string): Promise<void> {
   await fetch(`${API}/v1/conversations/${id}`, {
     method: "DELETE",
-    headers: { Authorization: `Bearer ${sessionStorage.getItem("auth_access_token") || ""}` },
+    headers: { Authorization: `Bearer ${localStorage.getItem("auth_access_token") || sessionStorage.getItem("auth_access_token") || ""}` },
   });
 }
 
@@ -117,7 +117,7 @@ export async function apiIngestFile(file: File, source: string): Promise<{ docum
   fd.append("file", file);
   const u = new URL(`${API}/v1/rag/ingest/file`);
   u.searchParams.set("source", source);
-  const token = sessionStorage.getItem("auth_access_token");
+  const token = localStorage.getItem("auth_access_token") || sessionStorage.getItem("auth_access_token");
   const res = await fetch(u.toString(), {
     method: "POST",
     body: fd,
@@ -132,7 +132,7 @@ export async function apiSubmitFeedback(messageId: string, score: 0 | 1): Promis
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${sessionStorage.getItem("auth_access_token") || ""}`,
+      Authorization: `Bearer ${localStorage.getItem("auth_access_token") || sessionStorage.getItem("auth_access_token") || ""}`,
     },
     body: JSON.stringify({ message_id: messageId, score }),
   }).catch(() => {});
@@ -150,7 +150,7 @@ export interface StreamingCallbacks {
 
 export function streamChat(req: ChatRequest, callbacks: StreamingCallbacks): AbortController {
   const controller = new AbortController();
-  const token = sessionStorage.getItem("auth_access_token");
+  const token = localStorage.getItem("auth_access_token") || sessionStorage.getItem("auth_access_token");
 
   (async () => {
     try {

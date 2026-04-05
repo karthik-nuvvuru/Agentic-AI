@@ -72,6 +72,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         request.state.user = {
             "id": payload.get("sub"),
             "email": payload.get("email", ""),
+            "name": payload.get("name", ""),
         }
         request.state.token = token
 

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   apiListConversations,
   apiCreateConversation,
@@ -6,7 +6,6 @@ import {
   apiUpdateConversationTitle,
   apiDeleteConversation,
   streamChat,
-  streamChat as streamChatHelper,
   apiIngestFile,
   type Conv,
   type ConvWithMessages,
@@ -42,8 +41,21 @@ export function useChat() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const streamControllerRef = useRef<AbortController | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
+  // Mutable refs to avoid closure staleness in callbacks
+  const streamingContentRef = useRef("");
+  const streamingSourcesRef = useRef<SourceEntry[]>([]);
+  const isStreamingRef = useRef(false);
+  const activeConvIdRef = useRef<string | null>(null);
   const token = useRef(sessionStorage.getItem("auth_access_token") || "");
+
+  // Sync refs with state
+  useEffect(() => { streamingContentRef.current = streamingContent; }, [streamingContent]);
+  useEffect(() => { streamingSourcesRef.current = streamingSources; }, [streamingSources]);
+  useEffect(() => { isStreamingRef.current = isStreaming; }, [isStreaming]);
+  useEffect(() => { activeConvIdRef.current = activeConvId; }, [activeConvId]);
+
   const authHeaders = useCallback(
     () => (token.current ? { Authorization: `Bearer ${token.current}` } : {}),
     []
@@ -210,33 +222,43 @@ export function useChat() {
       setIsStreaming(true);
       setStreamingContent("");
       setStreamingSources([]);
+      streamingContentRef.current = "";
+      streamingSourcesRef.current = [];
 
-      const controller = streamChatHelper(req, {
-        onSources: callbacks.onSources ?? ((sources) => setStreamingSources(sources)),
-        onToken: callbacks.onToken ?? ((_, full) => setStreamingContent(full)),
+      const controller = streamChat(req, {
+        onSources: callbacks.onSources ?? ((sources) => {
+          streamingSourcesRef.current = sources;
+          setStreamingSources(sources);
+        }),
+        onToken: callbacks.onToken ?? ((_, full) => {
+          streamingContentRef.current = full;
+          setStreamingContent(full);
+        }),
         onConversationId: callbacks.onConversationId,
         onCitation: callbacks.onCitation,
-        onDone: () => {
+        onDone: (_usage) => {
           setIsStreaming(false);
-          const content = streamingContent;
-          const sources = streamingSources;
+          const content = streamingContentRef.current;
+          const sources = streamingSourcesRef.current;
           setMessages((prev) => [
             ...prev,
-            { role: "assistant", content: content, sources: sources.length ? sources : undefined },
+            { role: "assistant" as const, content, sources: sources.length ? sources : undefined },
           ]);
           callbacks.onComplete?.(content, sources);
         },
         onError: (message) => {
           setIsStreaming(false);
-          if (streamingContent) {
+          const content = streamingContentRef.current;
+          const sources = streamingSourcesRef.current;
+          if (content) {
             setMessages((prev) => [
               ...prev,
-              { role: "assistant", content: streamingContent, sources: streamingSources.length ? streamingSources : undefined },
+              { role: "assistant" as const, content, sources: sources.length ? sources : undefined },
             ]);
           } else {
             setMessages((prev) => [
               ...prev,
-              { role: "assistant", content: `Error: ${message}` },
+              { role: "assistant" as const, content: `Error: ${message}` },
             ]);
           }
           callbacks.onFailure?.(message);
@@ -245,12 +267,12 @@ export function useChat() {
 
       streamControllerRef.current = controller;
     },
-    [resolveConvId, streamingContent, streamingSources]
+    [resolveConvId]
   );
 
   // ── Regenerate ──────────────────────────────────────────────
   const regenerate = useCallback(async () => {
-    if (messages.length < 2 || isStreaming) return;
+    if (messages.length < 2 || isStreamingRef.current) return;
     const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
     if (!lastUserMsg) return;
 
@@ -269,8 +291,10 @@ export function useChat() {
     setIsStreaming(true);
     setStreamingContent("");
     setStreamingSources([]);
+    streamingContentRef.current = "";
+    streamingSourcesRef.current = [];
 
-    let convId = activeConvId;
+    let convId = activeConvIdRef.current;
     if (!convId) {
       const c = await apiCreateConversation();
       setConversations((prev) => [c, ...prev]);
@@ -279,47 +303,53 @@ export function useChat() {
     }
 
     const controller = streamChat({ message: lastUserMsg.content, conversation_id: convId, top_k: 6, stream: true }, {
-      onToken: (_, full) => setStreamingContent(full),
-      onSources: (sources) => setStreamingSources(sources),
+      onToken: (_, full) => {
+        streamingContentRef.current = full;
+        setStreamingContent(full);
+      },
+      onSources: (sources) => {
+        streamingSourcesRef.current = sources;
+        setStreamingSources(sources);
+      },
       onDone: () => {
         setIsStreaming(false);
+        const content = streamingContentRef.current;
+        const sources = streamingSourcesRef.current;
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", content: streamingContent, sources: streamingSources.length ? streamingSources : undefined },
+          { role: "assistant" as const, content, sources: sources.length ? sources : undefined },
         ]);
         void loadConversations();
       },
       onError: (message) => {
         setIsStreaming(false);
+        const content = streamingContentRef.current;
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", content: streamingContent || `Error: ${message}` },
+          { role: "assistant" as const, content: content || `Error: ${message}` },
         ]);
       },
     });
 
     streamControllerRef.current = controller;
-  }, [messages, isStreaming, activeConvId, streamingContent, streamingSources, loadConversations]);
+  }, [messages, loadConversations]);
 
   // ── Edit & resend message ───────────────────────────────────
   const editAndResend = useCallback(async (msgIndex: number, newText: string) => {
-    if (isStreaming) return;
+    if (isStreamingRef.current) return;
 
     // Trim messages after the edit point
-    setMessages((prev) => prev.slice(0, msgIndex).concat({ role: "user", content: newText }));
+    setMessages((prev) => prev.slice(0, msgIndex).concat({ role: "user" as const, content: newText }));
 
-    const lastMsg = [
-      ...messages.slice(0, msgIndex),
-      { role: "user" as const, content: newText },
-    ].filter((m) => m.role === "user").pop();
-
-    if (!lastMsg || !lastMsg.content) return;
+    const lastMsg = { role: "user" as const, content: newText };
 
     setIsStreaming(true);
     setStreamingContent("");
     setStreamingSources([]);
+    streamingContentRef.current = "";
+    streamingSourcesRef.current = [];
 
-    let convId = activeConvId;
+    let convId = activeConvIdRef.current;
     if (!convId) {
       const c = await apiCreateConversation();
       setConversations((prev) => [c, ...prev]);
@@ -328,43 +358,56 @@ export function useChat() {
     }
 
     const controller = streamChat({ message: lastMsg.content, conversation_id: convId, top_k: 6, stream: true }, {
-      onToken: (_, full) => setStreamingContent(full),
-      onSources: (sources) => setStreamingSources(sources),
+      onToken: (_, full) => {
+        streamingContentRef.current = full;
+        setStreamingContent(full);
+      },
+      onSources: (sources) => {
+        streamingSourcesRef.current = sources;
+        setStreamingSources(sources);
+      },
       onDone: () => {
         setIsStreaming(false);
+        const content = streamingContentRef.current;
+        const sources = streamingSourcesRef.current;
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", content: streamingContent, sources: streamingSources.length ? streamingSources : undefined },
+          { role: "assistant" as const, content, sources: sources.length ? sources : undefined },
         ]);
         void loadConversations();
       },
       onError: (message) => {
         setIsStreaming(false);
+        const content = streamingContentRef.current;
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", content: streamingContent || `Error: ${message}` },
+          { role: "assistant" as const, content: content || `Error: ${message}` },
         ]);
       },
     });
 
     streamControllerRef.current = controller;
-  }, [isStreaming, messages, activeConvId, streamingContent, streamingSources, loadConversations]);
+  }, [isStreamingRef.current, messages, loadConversations]);
 
   // ── Stop ────────────────────────────────────────────────────
   const stop = useCallback(() => {
     streamControllerRef.current?.abort();
-    if (streamingContent) {
+    const content = streamingContentRef.current;
+    const sources = streamingSourcesRef.current;
+    if (content) {
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: streamingContent, sources: streamingSources.length ? streamingSources : undefined },
+        { role: "assistant" as const, content, sources: sources.length ? sources : undefined },
       ]);
       void loadConversations();
     }
     setStreamingContent("");
     setStreamingSources([]);
     setIsStreaming(false);
+    streamingContentRef.current = "";
+    streamingSourcesRef.current = [];
     streamControllerRef.current = null;
-  }, [streamingContent, streamingSources, loadConversations]);
+  }, [streamingContentRef, streamingSourcesRef, loadConversations]);
 
   return {
     conversations,
@@ -388,5 +431,6 @@ export function useChat() {
     ingestFiles,
     setActiveConvId,
     setPendingFiles,
+    inputRef,
   };
 }
