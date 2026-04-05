@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +14,7 @@ router = APIRouter(prefix="/v1/feedback", tags=["feedback"])
 
 
 class FeedbackRequest(BaseModel):
-    message_id: str = Field(..., description="UUID of the assistant message")
+    message_id: uuid.UUID = Field(..., description="UUID of the assistant message")
     score: int = Field(
         ..., ge=0, le=1, description="0 = thumbs-down, 1 = thumbs-up"
     )

@@ -57,6 +57,12 @@ class Chunk(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     embedding: Mapped[list[float]] = mapped_column(Vector(1536), nullable=False)
 
+    # ── Hybrid search + citations ────────────────────────────
+    tsv: Mapped[str | None] = mapped_column(Text, nullable=True)  # tsvector for keyword search
+
+    page_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    metadata_: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+
     document: Mapped[Document] = relationship(back_populates="chunks")
 
 
@@ -168,3 +174,17 @@ class UsageLog(Base):
     cost_cents: Mapped[float] = mapped_column(Numeric(10, 4), nullable=False, default=0)
     is_stream: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
+
+
+class IngestJob(Base):
+    """Tracks async ingestion progress: processing -> done/failed."""
+    __tablename__ = "ingest_jobs"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source: Mapped[str] = mapped_column(String(500), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="processing", index=True)
+    progress: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    document_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    chunks_added: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc), onupdate=lambda: dt.datetime.now(dt.timezone.utc))

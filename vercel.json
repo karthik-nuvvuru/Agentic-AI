@@ -1,0 +1,9 @@
+{
+  "buildCommand": "cd web && npm ci && npx vite build",
+  "outputDirectory": "web/dist",
+  "devCommand": "cd web && npx vite --port 5173",
+  "installCommand": "cd web && npm ci",
+  "rewrites": [
+    { "source": "/v1/:path*", "destination": "/" }
+  ]
+}

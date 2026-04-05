@@ -18,7 +18,7 @@ import {
   Typography,
 } from "@mui/material";
 import { useState, useCallback, useRef, useEffect } from "react";
-import { setTokens } from "./auth";
+import { setAccessToken } from "./auth";
 
 const API = import.meta.env.VITE_API_BASE || "";
 
@@ -194,8 +194,8 @@ export default function AuthScreen({ onSuccess }: AuthProps) {
         }
 
         const data = await res.json();
-        setTokens(data.access_token, data.refresh_token);
-        onSuccess({ access_token: data.access_token, refresh_token: data.refresh_token, user: data.user });
+        setAccessToken(data.access_token);
+        onSuccess({ access_token: data.access_token, refresh_token: data.refresh_token || "", user: data.user });
       } catch {
         setErrors({ general: "Network error. Please try again." });
       } finally {

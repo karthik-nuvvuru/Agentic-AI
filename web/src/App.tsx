@@ -28,7 +28,7 @@ import UploadFileIcon from "@mui/icons-material/UploadFile";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
 
-import { getAuthHeader, clearTokens, getTokens } from "./auth";
+import { getAuthHeader, clearTokens, getAccessToken } from "./auth";
 import AuthScreen from "./AuthScreen";
 import { ScrollContainer } from "./components/ScrollContainer";
 import { WelcomeScreen } from "./components/WelcomeScreen";
@@ -59,15 +59,15 @@ const MAX_F = 10_485_760;
 const EXTS = [".pdf", ".txt", ".md", ".csv", ".json"];
 
 /* ------------------------------------------------------------------ */
-/*  Theme — uses CSS variables from index.css for dark/light           */
+/*  Theme — all palette values use raw colors (MUI cannot handle CSS custom properties) */
 /* ------------------------------------------------------------------ */
 const darkTheme = createTheme({
   palette: {
     mode: "dark",
     primary: { main: "#667eea" },
-    background: { default: "var(--color-bg)", paper: "var(--color-surface)" },
-    text: { primary: "var(--color-text-primary)", secondary: "var(--color-text-secondary)", disabled: "var(--color-text-disabled)" },
-    divider: "var(--color-border)",
+    background: { default: "#09090b", paper: "rgba(255,255,255,.04)" },
+    text: { primary: "#e4e4e7", secondary: "#a1a1aa", disabled: "rgba(255,255,255,.25)" },
+    divider: "rgba(255,255,255,.08)",
     error: { main: "#f87171" },
     success: { main: "#34d399" },
   },
@@ -78,7 +78,7 @@ const darkTheme = createTheme({
   components: {
     MuiButton: { styleOverrides: { root: { textTransform: "none", fontWeight: 500, borderRadius: 8 } } },
     MuiPaper: { styleOverrides: { root: { backgroundImage: "none" } } },
-    MuiSkeleton: { styleOverrides: { root: { bgcolor: "var(--color-skeleton-bg)" } } },
+    MuiSkeleton: { styleOverrides: { root: { bgcolor: "rgba(128,128,128,.06)" } } },
   },
 });
 
@@ -610,14 +610,14 @@ export default function App() {
 
   useEffect(() => {
     (async () => {
-      const t = getTokens();
+      const t = getAccessToken();
       if (!t) {
         setReady(true);
         return;
       }
       try {
         const r = await fetch(`${API}/v1/auth/me`, {
-          headers: { Authorization: `Bearer ${t.access_token}` },
+          headers: { Authorization: `Bearer ${t}` },
         });
         if (!r.ok) throw 0;
         const d = await r.json();

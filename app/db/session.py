@@ -16,11 +16,11 @@ def get_engine() -> AsyncEngine:
         settings = get_settings()
         _engine = create_async_engine(
             settings.database_url,
-            pool_size=settings.database_pool_size,
-            max_overflow=settings.database_max_overflow,
+            pool_size=5,
+            max_overflow=10,
             pool_pre_ping=True,
-            pool_recycle=600,   # recycle connections every 10 min
-            pool_timeout=30,    # wait up to 30 s for a free connection
+            pool_recycle=600,
+            pool_timeout=30,
             echo=settings.app_env != "prod",
         )
     return _engine
@@ -30,7 +30,7 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
     global _session_factory
     if _session_factory is None:
         _session_factory = async_sessionmaker(
-            get_engine(), expire_on_commit=False, autoflush=False
+get_engine(), expire_on_commit=False, autoflush=False
         )
     return _session_factory
 

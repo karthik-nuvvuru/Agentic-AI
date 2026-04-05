@@ -6,8 +6,7 @@ import structlog
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
+from app.middleware.rate_limiter import RateLimitMiddleware, rate_limit_exceeded_handler
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.health import router as health_router
@@ -27,12 +26,8 @@ from app.exceptions import (
 )
 from app.middleware.request_id import RequestIDMiddleware
 from app.middleware.timing import TimingMiddleware
+from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.middleware.auth import AuthMiddleware
-from app.middleware.rate_limiter import (
-    limiter,
-    rate_limit_exceeded_handler,
-    RateLimitMiddleware,
-)
 
 
 log = structlog.get_logger(__name__)
@@ -71,25 +66,22 @@ def create_app() -> FastAPI:
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.add_exception_handler(Exception, global_exception_handler)
-    app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
     # ── Middleware (outermost last = runs first) ───────────
-    app.add_middleware(RequestIDMiddleware)   # sets request_id on every log
-    app.add_middleware(TimingMiddleware)      # logs duration_ms, endpoint
-    app.add_middleware(RateLimitMiddleware)
-    app.add_middleware(AuthMiddleware)
+    app.add_middleware(RequestIDMiddleware)     # sets request_id on every log
+    app.add_middleware(TimingMiddleware)        # logs duration_ms, endpoint
+    app.add_middleware(RateLimitMiddleware)     # IP-based rate limiting
+    app.add_middleware(AuthMiddleware)          # JWT auth
+    app.add_middleware(SecurityHeadersMiddleware)  # X-Frame, CSP, etc.
 
-    origins = settings.cors_origins or [settings.frontend_url]
+    origins = [str(o) for o in settings.cors_origins]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[str(o) for o in origins] if origins != ["*"] else origins,
+        allow_origins=origins,
         allow_credentials=True,
-        allow_methods=["*"],
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["*"],
     )
-
-    # ── Slowapi rate-limiter extension ──────────────────────
-    app.state.limiter = limiter
 
     # ── Routes ──────────────────────────────────────────────
     app.include_router(health_router)

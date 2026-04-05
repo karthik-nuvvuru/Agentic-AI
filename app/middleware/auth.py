@@ -13,10 +13,11 @@ from app.db.models import User
 
 # Paths that don't need auth
 OPEN_PATHS = {
-    "/healthz", "/readyz",
+    "/healthz", "/readyz", "/health", "/ready",
     "/v1/auth/register", "/v1/auth/login", "/v1/auth/refresh",
     "/v1/auth/google/login", "/v1/auth/google/callback",
     "/v1/auth/github/login", "/v1/auth/github/callback",
+    "/v1/auth/logout",
 }
 
 # Paths that are auth-protected (prefix match)

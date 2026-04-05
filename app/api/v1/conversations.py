@@ -92,7 +92,7 @@ async def get_conversation(
     )
 
 
-@router.post("", response_model=ConversationOut)
+@router.post("", response_model=ConversationOut, status_code=201)
 async def create_conversation(
     req: CreateConversationRequest | None = None,
     session: AsyncSession = Depends(db_session),

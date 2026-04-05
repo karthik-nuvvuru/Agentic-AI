@@ -28,7 +28,7 @@ function timeAgo(iso?: string): number {
 }
 
 function timeGroup(iso?: string): number {
-  const ms = Date.now() - new Date(iso).getTime();
+  const ms = iso ? Date.now() - new Date(iso).getTime() : Infinity;
   const day = 86400000;
   if (ms < day) return 0;
   if (ms < 2 * day) return 1;

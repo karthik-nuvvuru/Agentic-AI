@@ -1,0 +1,106 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.13"
+  NODE_VERSION: "22"
+  OPENAI_API_KEY: "sk-fake-key-for-builds"
+  JWT_SECRET: "ci-test-secret-key-must-be-32-chars!!"
+  DATABASE_URL: "postgresql+psycopg://postgres:postgres@localhost:5432/agentic_test"
+  REDIS_URL: "redis://localhost:6379/0"
+
+jobs:
+  # ───────── 1. Backend tests ─────────
+  test-backend:
+    name: Test Backend
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: agentic_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install Poetry
+        run: pip install poetry==1.8.5
+      - name: Install deps
+        run: poetry install --only main --no-interaction
+      - name: Install test extras
+        run: poetry add slowapi  --quiet
+      - name: Run tests
+        run: poetry run pytest tests/ -v --tb=short
+
+  # ───────── 2. Frontend build ─────────
+  test-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install deps
+        run: npm ci
+        working-directory: web
+      - name: Type check + build
+        run: npx vite build
+        working-directory: web
+
+  # ───────── 3. Deploy to Render ─────────
+  deploy-render:
+    name: Deploy Backend
+    needs: [test-backend, test-frontend]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy
+        run: |
+          curl -f -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
+
+      - name: Wait for health
+        run: |
+          for i in $(seq 1 24); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "${{ secrets.BACKEND_URL }}/health" || echo "000")
+            [ "$code" = "200" ] && echo "✅ Healthy" && exit 0
+            echo "  attempt $i: $code — retrying in 15s..."
+            sleep 15
+          done
+          echo "❌ Backend unhealthy" && exit 1
+
+  # ───────── 4. Smoke test ─────────
+  smoke:
+    name: Smoke Test
+    needs: deploy-render
+    runs-on: ubuntu-latest
+    steps:
+      - name: GET /health
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' "${{ secrets.BACKEND_URL }}/health")
+          [ "$code" = "200" ] && echo "✅ /health ok"
+      - name: GET /ready
+        run: |
+          curl -fsS "${{ secrets.BACKEND_URL }}/ready"

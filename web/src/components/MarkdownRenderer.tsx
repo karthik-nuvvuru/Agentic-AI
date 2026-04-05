@@ -147,7 +147,7 @@ export const mdComponents: Components = {
       {children}
     </Typography>
   ),
-  code: ({ className, children, ...props }: any) => {
+  code: ({ className, children }: any) => {
     const match = /language-(\w+)/.exec(className || "");
     // Only render as standalone block if it's inside a pre
     if (match) {

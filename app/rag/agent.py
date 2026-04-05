@@ -57,12 +57,12 @@ async def generate_answer(
     messages.extend(conversation_history)
     messages.append({"role": "user", "content": last_message})
 
-    resp = await client.chat.completions.create(
-        model=settings.openai_model,
+    result = await client.chat(
         messages=messages,
+        model=settings.openai_model,
         max_tokens=settings.openai_max_tokens,
     )
-    return resp.choices[0].message.content or ""
+    return result.get("message", {}).get("content", "")
 
 
 async def generate_title(
@@ -71,8 +71,7 @@ async def generate_title(
     first_message: str,
 ) -> str:
     client = LLMClient(settings)
-    resp = await client.chat.completions.create(
-        model=settings.openai_model,
+    result = await client.chat(
         messages=[
             {
                 "role": "system",
@@ -83,7 +82,8 @@ async def generate_title(
             },
             {"role": "user", "content": first_message},
         ],
+        model=settings.openai_model,
         max_tokens=20,
     )
-    title = (resp.choices[0].message.content or "New conversation").strip().strip('"')
-    return title if title else "New conversation"
+    title = result.get("message", {}).get("content", "New conversation").strip().strip('"')
+    return title or "New conversation"
